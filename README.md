@@ -100,7 +100,7 @@ Note that the mouse only controls player 1.
 > Gyro Aiming will not work if using a Input Remapper lacks controller-specific emulation (example: Steam Input), or using a controller that doesn't support Motion Sensors such as Xbox Wireless Controller.
 
 > [!TIP]
-> Gyro Drift may become a occurence during regular gameplay, but far more frequent when using a first-party Nintendo Switch controllers. To remedy this issue: `Gyro Calibration` (under `Player [Number] Controller Options`'s `Gyro Settings`) offers various modes for you to choose from, from `While In Menus` (default), `While Stationary` to `Always`. Depending on what Calibration mode you choose from: just place the controller on the flat surface, and it will automatically calibrate gyro after a few seconds.
+> Gyro Drift may become a occurence during regular gameplay, but far more frequent when using a first-party Nintendo Switch controllers. To remedy this issue: `Gyro Calibration` (under `Player [Number] Controller Options`'s `Gyro Settings`) offers various modes for you to choose from, from `While In Menus` (default) to `Always`. Depending on what Calibration mode you choose from: just place the controller on the flat surface, and it will automatically calibrate gyro after a few seconds.
 >
 > If the Autocalibration fails or you don't want the gyro to auto-calibrate during regular gameplay: you have the ability to manually calibrate the gyro. You can head over to "`Gyro Settings...`" menu, either select `Initiate Gyro Calibration...`, pressing the `VIEW` button on your Xbox pad or `F10` key (Player 1 only) at anytime during both gameplay and menus, (it also complements Gyro Autocalibration process!)
 >
