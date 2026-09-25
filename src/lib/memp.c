@@ -7,275 +7,310 @@
 #include "data.h"
 #include "types.h"
 #include "system.h"
+#include <string.h>
+
+/**
+ * memshared - functions usable by both memp and mema.
+ */
+
+#if MEMORY_DEBUG
+char* lastAttemptedFree = NULL;
+#endif
+
+bool memDefragPass(struct memorypool *pool)
+{
+	size_t freeSpace;
+	bool foundFreeSpace = false;
+
+	for (size_t i = 0; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr == NULL)
+		{
+			freeSpace = i;
+			foundFreeSpace = true;
+			break;
+		}
+	}
+	if (!foundFreeSpace)
+	{
+		return false;
+	}
+	for (size_t i = freeSpace; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr != NULL)
+		{
+#if MEMORY_DEBUG
+			pool->allocations[freeSpace].label = pool->allocations[i].label;
+			pool->allocations[i].label = NULL;
+#endif
+			pool->allocations[freeSpace].addr = pool->allocations[i].addr;
+			pool->allocations[i].addr = NULL;
+			pool->allocations[freeSpace].size = pool->allocations[i].size;
+			pool->allocations[i].size = 0;
+			return true;
+		}
+	}
+	return false;
+}
+
+void memDefrag(struct memorypool *pool)
+{
+	while (memDefragPass(pool));
+	for (size_t i = 0; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr == NULL)
+		{
+			pool->nextAlloc = i;
+			return;
+		}
+	}
+}
+
+void memInit(struct memorypool *pool, size_t initialCapacity, char* label)
+{
+	pool->nextAlloc = 0;
+	pool->slots = initialCapacity;
+	pool->label = label;
+	size_t allocationSize = pool->slots * sizeof(*pool->allocations);
+	void* allocations = sysMemZeroAlloc(allocationSize);
+	if (allocations != NULL)
+	{
+		pool->allocations = allocations;
+	}
+	else
+	{
+		sysFatalError("Could not allocate %zu bytes for memory pool %s.", allocationSize, label);
+	}
+}
+
+void memFreeIndex(struct memorypool *pool, size_t index)
+{
+#if MEMORY_DEBUG
+	lastAttemptedFree = pool->allocations[index].label;
+#endif
+	sysMemFree(pool->allocations[index].addr);
+#if MEMORY_DEBUG
+	pool->allocations[index].label = NULL;
+#endif
+	pool->allocations[index].addr = NULL;
+	pool->allocations[index].size = 0;
+}
+
+void memReset(struct memorypool *pool)
+{
+	for (size_t i = 0; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr != NULL)
+		{
+			memFreeIndex(pool, i);
+		}
+	}
+	pool->nextAlloc = 0;
+}
+
+/*
+ * Expands the size of the allocation tracker.
+ * On failure, will call memDefrag.
+ * Returns true on success, false on failure.
+ */
+bool memExpand(struct memorypool *pool)
+{
+	size_t oldSize = pool->slots;
+	size_t newSize = pool->slots * 2;
+	void* tmp = sysMemRealloc(pool->allocations, newSize * sizeof(*pool->allocations));
+	if (tmp == NULL)
+	{
+		memDefrag(pool);
+		return false;
+	}
+	pool->allocations = (struct allocslot*)tmp;
+	pool->slots = newSize;
+	memset(tmp + (oldSize * sizeof(*pool->allocations)), 0, (newSize - oldSize) * sizeof(*pool->allocations));
+	return true;
+}
+
+#if MEMORY_DEBUG
+void *_memAlloc(struct memorypool *pool, size_t size, char* label)
+#else
+void *memAlloc(struct memorypool *pool, size_t size)
+#endif
+{
+	void *allocation;
+
+	if (pool->nextAlloc >= pool->slots)
+	{
+		memExpand(pool);
+		// memorypool may have been expanded (pool->slots is now higher)
+		// or defragmented (pool->nextAlloc is now lower)
+		if (pool->nextAlloc >= pool->slots)
+		{
+#if MEMORY_DEBUG
+			printf("memAlloc: %s: Failed to expand %s and allocate %zu bytes\n", label, pool->label, size);
+#else
+			printf("memAlloc: Failed to expand %s and allocate %zu bytes\n", pool->label, size);
+#endif
+			return NULL;
+		}
+	}
+
+	allocation = sysMemZeroAlloc(size);
+	if (allocation == NULL)
+	{
+#if MEMORY_DEBUG
+		printf("memAlloc: %s: OS failed to allocate %zu bytes in %s\n", label, size, pool->label);
+#else
+		printf("memAlloc: OS failed to allocate %zu bytes in %s\n", size, pool->label);
+#endif
+		return NULL;
+	}
+#if MEMORY_DEBUG
+	pool->allocations[pool->nextAlloc].label = label;
+#endif
+	pool->allocations[pool->nextAlloc].addr = allocation;
+	pool->allocations[pool->nextAlloc].size = size;
+	pool->nextAlloc++;
+#if MEMORY_DEBUG > 1
+	printf("memAlloc: %s: Allocated %zu bytes in %s\n", label, size, pool->label);
+#endif
+	return allocation;
+}
+
+void memFree(struct memorypool *pool, void *addr, size_t size)
+{
+	for (size_t i = 0; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr == addr)
+		{
+			memFreeIndex(pool, i);
+			return;
+		}
+	}
+}
+
+void memInfo(void *addr, char* infoBuffer, size_t infoBufferCapacity)
+{
+	for (size_t i = 0; i < ARRAYCOUNT(g_MemPools); i++)
+	{
+		struct memorypool* pool = &g_MemPools[i];
+		for (size_t j = 0; j < pool->nextAlloc; j++)
+		{
+			if (pool->allocations[j].addr == addr)
+			{
+#if MEMORY_DEBUG
+				snprintf(infoBuffer, infoBufferCapacity, "%p: %s: %s: %zu bytes", addr, pool->label, pool->allocations[j].label, pool->allocations[j].size);
+#else
+				snprintf(infoBuffer, infoBufferCapacity, "%p: %s: %zu bytes", addr, pool->label, pool->allocations[j].size);
+#endif
+				return;
+			}
+		}
+	}
+	snprintf(infoBuffer, infoBufferCapacity, "%p: Non-Managed Pointer", addr);
+	return;
+}
 
 /**
  * memp - memory pool allocation system.
  *
- * Memp is the main memory allocation system in the game. Memp's heap size is
- * around 1MB without the expansion pak, and around 5MB with the expansion pak.
+ * Memp is the main memory allocation system in the game.
  *
- * There are other memory systems in the game, particularly mema, graphics
- * memory and the audio heap, which are all allocated out of memp.
- *
- * The memp system has two banks - onboard and expansion - which refer to the
- * onboard memory and expansion pak memory if present. If the expansion pak is
- * present, it's used entirely for memp.
- *
- * Each bank consists of 8 pools, which start off overlapping. Care must be
- * taken to not allocate from the wrong pool at the wrong time. In practice it
- * appears only two pools are used which makes this easy:
- *
- * MEMPOOL_PERMANENT (index 6) is for permanent data and is never cleared.
- * MEMPOOL_STAGE (index 4) is for general data and is cleared on stage load.
- *
- * After the permanent pool has finished its allocations, it is closed off and
- * the stage pool is then placed immediately after it. All allocations from
- * there on are made from the stage pool.
- *
- * Each pool has a start and end address. Allocations are typically served from
- * the left side of the pool but can also be allocated from the right side.
- * In practice right side allocations are only used once (by texture related
- * code).
- *
- * Resizing an allocation is also supported, but only from the left side and
- * only if it's the most recent allocation.
- *
- * Freeing individual allocations is not supported by memp. The only way to free
- * memp memory is to load a new stage which wipes the stage pool.
+ * MEMPOOL_STAGE is for general data and is cleared on stage load.
+ * MEMPOOL_5 probably had something to do with file loading at some point.
+ * MEMPOOL_7 is reset alongside MEMPOOL_STAGE.
+ * MEMPOOL_8 has something to do with utils.
+ * MEMPOOL_PERMANENT is for permanent data and is never cleared.
+ * MEMPOOL_ADHOC is used for mema allocations.
  */
 
-#ifndef PLATFORM_N64
-// TODO: set this in a config or something
-#define MEMP_EXPANSION_POOL_SIZE (8 * 1024 * 1024)
-#endif
-
-struct memorypool {
-	/*0x00*/ u8 *start;
-	/*0x04*/ u8 *leftpos;
-	/*0x08*/ u8 *rightpos;
-	/*0x0c*/ u8 *end;
-	/*0x10*/ u8 *prevallocation;
-};
-
-struct memorypool g_MempOnboardPools[9];
-struct memorypool g_MempExpansionPools[9];
+struct memorypool g_MemPools[10];
 
 void mempInit(void)
 {
-	// empty
+	for (int i = 0; i < ARRAYCOUNT(g_MemPools); i++) {
+		switch(i) {
+			case MEMPOOL_STAGE:
+				memInit(&g_MemPools[i], 2048, "MEMPOOL_STAGE");
+				break;
+			case MEMPOOL_PERMANENT:
+				memInit(&g_MemPools[i], 32, "MEMPOOL_PERMANENT");
+				break;
+			case MEMPOOL_ADHOC:
+				memInit(&g_MemPools[i], 128, "MEMPOOL_ADHOC");
+				break;
+			default:
+				char* label = sysMemZeroAlloc(12);
+				sprintf(label, "MEMPOOL_%u", i);
+				memInit(&g_MemPools[i], 1, label);
+				break;
+		}
+	}
 }
 
-/**
- * Initialise memp by initialising the banks and pools.
- *
- * The arguments passed are the onboard start and length that can be used.
- * If the expansion pak is present, the entire pak is used for the second bank.
- */
-void mempSetHeap(u8 *heapstart, u32 heaplen)
+#if MEMORY_DEBUG
+void *_mempGetNextStageAllocation(char* label)
 {
-	s32 i;
-	u8 *extraend;
-
-	for (i = 0; i < ARRAYCOUNT(g_MempOnboardPools); i++) {
-		g_MempOnboardPools[i].start = 0;
-		g_MempOnboardPools[i].leftpos = 0;
-		g_MempOnboardPools[i].rightpos = 0;
-		g_MempOnboardPools[i].prevallocation = 0;
-
-		g_MempExpansionPools[i].start = 0;
-		g_MempExpansionPools[i].leftpos = 0;
-		g_MempExpansionPools[i].rightpos = 0;
-		g_MempExpansionPools[i].prevallocation = 0;
-	}
-
-#ifndef PLATFORM_N64
-	// separate the heap space into onboard and expansion
-	u32 expansionlen = 0;
-	if (heaplen > MEMP_EXPANSION_POOL_SIZE) {
-		heaplen -= MEMP_EXPANSION_POOL_SIZE;
-		expansionlen = MEMP_EXPANSION_POOL_SIZE;
-	}
-#endif
-
-	g_MempOnboardPools[MEMPOOL_0].start = heapstart;
-	g_MempOnboardPools[MEMPOOL_0].rightpos = heapstart + heaplen;
-	g_MempOnboardPools[MEMPOOL_PERMANENT].start = heapstart;
-	g_MempOnboardPools[MEMPOOL_PERMANENT].rightpos = heapstart + heaplen;
-	g_MempOnboardPools[MEMPOOL_STAGE].start = heapstart;
-	g_MempOnboardPools[MEMPOOL_STAGE].rightpos = heapstart + heaplen;
-
-#ifdef PLATFORM_N64
-	// If 8MB, reserve the entire expansion pak for the stage pool
-#if VERSION >= VERSION_NTSC_1_0
-	extraend = (u8 *) K0BASE + bootGetMemSize();
-#else
-	extraend = (u8 *) K0BASE + osGetMemSize();
-#endif
-
-#if VERSION >= VERSION_NTSC_1_0
-	if (bootGetMemSize() > 4 * 1024 * 1024)
-#else
-	if (osGetMemSize() > 4 * 1024 * 1024)
-#endif
-	{
-		g_MempExpansionPools[MEMPOOL_STAGE].start = (u8 *) K0BASE + 4 * 1024 * 1024;
-		g_MempExpansionPools[MEMPOOL_STAGE].rightpos = extraend;
-	}
-#else
-	if (expansionlen) {
-		g_MempExpansionPools[MEMPOOL_STAGE].start = heapstart + heaplen;
-		g_MempExpansionPools[MEMPOOL_STAGE].rightpos = heapstart + heaplen + expansionlen;
-	}
-#endif
-
-	for (i = 0; i < ARRAYCOUNT(g_MempOnboardPools); i++) {
-		g_MempOnboardPools[i].end = g_MempOnboardPools[i].rightpos;
-		g_MempExpansionPools[i].end = g_MempExpansionPools[i].rightpos;
-	}
+	return _memAlloc(&g_MemPools[MEMPOOL_STAGE], 4 * 1024 * 1024, label); // Give it 4MB so I don't have to figure out the right amount to allocate right now.
 }
-
-/**
- * Return the amount of free space in the stage pool.
- *
- * If using the expansion pak, it's assumed that the onboard pool is full
- * so only the expansion pool is checked.
- */
-u32 mempGetStageFree(void)
-{
-	u32 free;
-
-	if (IS4MB()) {
-		free = g_MempOnboardPools[MEMPOOL_STAGE].rightpos - g_MempOnboardPools[MEMPOOL_STAGE].leftpos;
-	} else {
-		free = g_MempExpansionPools[MEMPOOL_STAGE].rightpos - g_MempExpansionPools[MEMPOOL_STAGE].leftpos;
-	}
-
-	return free;
-}
-
+#else
 void *mempGetNextStageAllocation(void)
 {
-	void *next;
-
-	if (IS4MB()) {
-		next = g_MempOnboardPools[MEMPOOL_STAGE].leftpos;
-	} else {
-		next = g_MempExpansionPools[MEMPOOL_STAGE].leftpos;
-	}
-
-	return next;
+	return memAlloc(&g_MemPools[MEMPOOL_STAGE], 4 * 1024 * 1024); // Give it 4MB so I don't have to figure out the right amount to allocate right now.
 }
+#endif
 
-void *mempAllocFromBank(struct memorypool *pool, u32 size, u8 poolnum)
+#if MEMORY_DEBUG
+void *_mempAlloc(u32 len, u8 pool, char* label)
 {
-	u8 *allocation;
-
-	pool += poolnum;
-
-	allocation = pool->leftpos;
-
-	if (pool->leftpos == 0) {
-		return allocation;
-	}
-
-	if (pool->leftpos > pool->rightpos) {
-		sysLogPrintf(LOG_NOTE, "#warning: memory pool %x is full. Req: %d\n", pool, size);
-		return 0;
-	}
-
-	if (pool->leftpos + size > pool->rightpos) {
-		sysLogPrintf(LOG_NOTE, "#warning: memory pool %x is full. Req: %d\n", pool, size);
-		return 0;
-	}
-
-	pool->leftpos += size;
-	pool->prevallocation = allocation;
-
-	if (1);
-
-	return (void *)allocation;
+	return _memAlloc(&g_MemPools[pool], len, label);
 }
-
+#else
 void *mempAlloc(u32 len, u8 pool)
 {
-	void *allocation = mempAllocFromBank(g_MempOnboardPools, len, pool);
-
-	if (allocation) {
-		return allocation;
-	}
-
-	allocation = mempAllocFromBank(g_MempExpansionPools, len, pool);
-
-	if (allocation) {
-		return allocation;
-	}
-
-#if VERSION < VERSION_NTSC_1_0
-#ifdef DEBUG
-	if (pool != MEMPOOL_8 && pool != MEMPOOL_7 && len) {
-		char buffer[80];
-		u32 stack;
-		u32 size;
-		u32 free;
-
-		if (pool == MEMPOOL_STAGE) {
-			free = mempGetPoolFree(MEMPOOL_STAGE, MEMBANK_ONBOARD);
-			size = mempGetPoolSize(MEMPOOL_STAGE, MEMBANK_ONBOARD);
-			sprintf(buffer, "Out of mem - LEV: %d f %d s %d", len, free, size);
-		} else {
-			free = mempGetPoolFree(MEMPOOL_PERMANENT, MEMBANK_ONBOARD);
-			size = mempGetPoolSize(MEMPOOL_PERMANENT, MEMBANK_ONBOARD);
-			sprintf(buffer, "Out of mem - ETR: %d f %d s %d", len, free, size);
-		}
-
-		crashSetMessage(buffer);
-		CRASH();
-	}
-#endif
-#endif
-
-	return allocation;
+	return memAlloc(&g_MemPools[pool], len);
 }
+#endif
+
+#if MEMORY_DEBUG
+void *_mempAllocFromRight(u32 len, u8 pool, char* label)
+{
+	return _memAlloc(&g_MemPools[pool], len, label);
+}
+#else
+void *mempAllocFromRight(u32 len, u8 pool)
+{
+	return memAlloc(&g_MemPools[pool], len);
+}
+#endif
 
 /**
  * Reallocate the given allocation in the given pool.
  * The pointer will remain unchanged.
  *
- * The allocation must be the most recent allocation.
- *
- * @dangerous: This function does not check the limits of the memory pool.
- * If it allocates past the rightpos of the pool it could lead to memory corruption.
+ * newsize must be less than (or equal to) the original size.
  */
 s32 mempRealloc(void *allocation, s32 newsize, u8 poolnum)
 {
-	struct memorypool *pool = &g_MempOnboardPools[poolnum];
-	s32 origsize;
-	s32 growsize;
+	struct memorypool* pool = &g_MemPools[poolnum];
 
-	if (pool->prevallocation != allocation) {
-		pool = &g_MempExpansionPools[poolnum];
-
-		if (pool->prevallocation != allocation) {
-			return 2;
-		}
-	}
-
-	origsize = pool->leftpos - pool->prevallocation;
-	growsize = newsize - origsize;
-
-	if (growsize <= 0) {
-		pool->leftpos += growsize;
-		pool->leftpos = (u8 *)ALIGN16((uintptr_t) pool->leftpos);
+	if (newsize == 0)
+	{
+		memFree(pool, allocation, newsize);
 		return 1;
 	}
 
-	pool->leftpos += growsize;
-	return 1;
-}
+	for (size_t i = 0; i < pool->nextAlloc; i++)
+	{
+		if (pool->allocations[i].addr == allocation)
+		{
+			if (newsize <= pool->allocations[i].size)
+			{
+				pool->allocations[i].size = newsize;
+			}
+			return 1;
+		}
+	}
 
-void memp000124cc(void)
-{
-	// empty
+	return 0;
 }
 
 /**
@@ -283,116 +318,10 @@ void memp000124cc(void)
  */
 u32 mempGetPoolFree(u8 poolnum, u32 bank)
 {
-	struct memorypool *pool;
-
-	if (bank == MEMBANK_ONBOARD) {
-		pool = &g_MempOnboardPools[poolnum];
-	} else {
-		pool = &g_MempExpansionPools[poolnum];
-	}
-
-	return pool->rightpos - pool->leftpos;
+	return 4300; // Just lie and say we have enough for texLoad.
 }
 
-#ifdef DEBUG
-u32 mempGetPoolSize(u8 poolnum, u32 bank)
-{
-	struct memorypool *pool;
-
-	if (bank == MEMBANK_ONBOARD) {
-		pool = &g_MempOnboardPools[poolnum];
-	} else {
-		pool = &g_MempExpansionPools[poolnum];
-	}
-
-	return pool->rightpos - pool->start;
-}
-#endif
-
-#if VERSION < VERSION_NTSC_1_0
-void *mempAllocFromPackedWord(u32 word)
-{
-	return mempAlloc(word >> 4, word & 0x0f);
-}
-#endif
-
-/**
- * Reset the pool's left side to its start address, effectively freeing the left
- * side of the pool.
- *
- * If resetting the stage pool, close off the permanent pool and place the stage
- * pool immediately after it.
- *
- * Note the right side is not reset here.
- */
 void mempResetPool(u8 pool)
 {
-	if (pool == MEMPOOL_STAGE) {
-		g_MempOnboardPools[MEMPOOL_STAGE].start = g_MempOnboardPools[MEMPOOL_PERMANENT].leftpos;
-		g_MempOnboardPools[MEMPOOL_PERMANENT].rightpos = g_MempOnboardPools[MEMPOOL_PERMANENT].leftpos;
-		g_MempOnboardPools[MEMPOOL_PERMANENT].end = g_MempOnboardPools[MEMPOOL_PERMANENT].leftpos;
-	}
-
-	g_MempOnboardPools[pool].leftpos = g_MempOnboardPools[pool].start;
-	g_MempExpansionPools[pool].leftpos = g_MempExpansionPools[pool].start;
-	g_MempOnboardPools[pool].prevallocation = 0;
-	g_MempExpansionPools[pool].prevallocation = 0;
-}
-
-/**
- * Setting leftpos to 0 means that this pool will refuse allocations from the
- * left.
- *
- * Setting rightpos to the end means it's resetting the right side and making
- * that available for allocations. It would have made more sense to do this in
- * mempResetPool instead.
- */
-void mempDisablePool(u8 pool)
-{
-	g_MempOnboardPools[pool].leftpos = 0;
-	g_MempExpansionPools[pool].leftpos = 0;
-	g_MempOnboardPools[pool].rightpos = g_MempOnboardPools[pool].end;
-	g_MempExpansionPools[pool].rightpos = g_MempExpansionPools[pool].end;
-}
-
-void *mempAllocFromBankRight(struct memorypool *pool, u32 size, u8 poolnum)
-{
-	u8 *allocation;
-
-	pool += poolnum;
-
-	allocation = pool->rightpos;
-
-	if (allocation == 0) {
-		return allocation;
-	}
-
-	if (pool->rightpos < pool->leftpos) {
-		return 0;
-	}
-
-	if (pool->rightpos - size < pool->leftpos) {
-		return 0;
-	}
-
-	pool->rightpos -= size;
-
-	return (void *)pool->rightpos;
-}
-
-void *mempAllocFromRight(u32 len, u8 pool)
-{
-	void *allocation = mempAllocFromBankRight(g_MempOnboardPools, len, pool);
-
-	if (allocation) {
-		return allocation;
-	}
-
-	allocation = mempAllocFromBankRight(g_MempExpansionPools, len, pool);
-
-	if (allocation) {
-		return allocation;
-	}
-
-	return allocation;
+	memReset(&g_MemPools[pool]);
 }

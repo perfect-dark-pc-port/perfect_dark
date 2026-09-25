@@ -27,9 +27,6 @@ OSSched g_Sched;
 OSMesgQueue g_MainMesgQueue;
 OSMesg g_MainMesgBuf[32];
 
-u8 *g_MempHeap = NULL;
-u32 g_MempHeapSize = 0;
-
 u32 g_VmNumTlbMisses = 0;
 u32 g_VmNumPageMisses = 0;
 u32 g_VmNumPageReplaces = 0;
@@ -123,13 +120,6 @@ int main(int argc, const char **argv)
 
 	g_OsMemSize = osGetMemSize();
 
-	g_MempHeapSize = g_OsMemSize;
-	g_MempHeap = sysMemZeroAlloc(g_MempHeapSize);
-	if (!g_MempHeap) {
-		sysFatalError("Could not alloc %u bytes for memp heap.", g_MempHeapSize);
-	}
-
-	sysLogPrintf(LOG_NOTE, "memp heap at %p - %p", g_MempHeap, g_MempHeap + g_MempHeapSize);
 	sysLogPrintf(LOG_NOTE, "rom  file at %p - %p", g_RomFile, g_RomFile + g_RomFileSize);
 
 	g_SndDisabled = sysArgCheck("--no-sound");
