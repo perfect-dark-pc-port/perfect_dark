@@ -4,6 +4,7 @@
 #include <PR/ultratypes.h>
 #include <PR/os_thread.h>
 #include <PR/os_cont.h>
+#include <stdbool.h>
 #include "platform.h"
 #include "input.h"
 #include "video.h"
@@ -71,6 +72,8 @@ static char bindStrs[MAXCONTROLLERS][CK_TOTAL_COUNT][MAX_BIND_STR];
 static s32 fakeControllers = 0;
 static s32 firstController = 0;
 static s32 connectedMask = 0;
+static s32 inputWindowFocus = 1; // Whether the input window is focused, configured in pd.ini
+static s32 windowHasFocus = 1;
 
 static s32 numJoysticks = 0;
 
@@ -547,6 +550,20 @@ static int inputEventFilter(void *data, SDL_Event *event)
 			}
 			break;
 
+		case SDL_WINDOWEVENT:
+			switch (event->window.event) {
+				case SDL_WINDOWEVENT_FOCUS_GAINED:
+					windowHasFocus = 1;
+					SDL_GetRelativeMouseState(NULL, NULL); // clear relative mouse movement while window isn't in focus
+					break;
+				case SDL_WINDOWEVENT_FOCUS_LOST:
+					windowHasFocus = 0;
+					break;
+				default:
+					break;
+			}
+			break;
+
 		default:
 			break;
 	}
@@ -800,6 +817,15 @@ s32 inputReadController(s32 idx, OSContPad *npad)
 
 	npad->button = 0;
 
+	if (inputWindowFocus && !windowHasFocus) {
+		// Reset controller state when window is out of focus
+		npad->stick_x = 0;
+		npad->stick_y = 0;
+		npad->rstick_x = 0;
+		npad->rstick_y = 0;
+		return 0;
+	}
+
 	if (textInput) {
 		npad->stick_x = 0;
 		npad->stick_y = 0;
@@ -878,6 +904,15 @@ s32 inputReadController(s32 idx, OSContPad *npad)
 
 static inline void inputUpdateMouse(void)
 {
+	if (inputWindowFocus && !windowHasFocus) {
+		// Reset mouse state when window is out of focus
+		mouseButtons = 0;
+		mouseDX = 0;
+		mouseDY = 0;
+		mouseWheel = 0;
+		return;
+	}
+
 	s32 mx, my;
 	mouseButtons = SDL_GetMouseState(&mx, &my);
 
@@ -1176,6 +1211,10 @@ const u32 *inputKeyGetBinds(s32 idx, u32 ck)
 
 s32 inputKeyPressed(u32 vk)
 {
+	if (inputWindowFocus && !windowHasFocus) {
+		return 0; // No input when window is out of focus
+	}
+
 	if (vk >= VK_KEYBOARD_BEGIN && vk < VK_MOUSE_BEGIN) {
 		const u8 *state = SDL_GetKeyboardState(NULL);
 		return state[vk - VK_KEYBOARD_BEGIN];
@@ -1521,6 +1560,7 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 	configRegisterFloat("Input.MouseSpeedY", &mouseSensY, -30.f, 30.f);
 	configRegisterInt("Input.FakeGamepads", &fakeControllers, 0, 4);
 	configRegisterInt("Input.FirstGamepadNum", &firstController, 0, 3);
+	configRegisterInt("Input.InputWindowFocus", &inputWindowFocus, 0, 1);
 	configRegisterInt("Input.UseHIDAPI", &useHIDAPI, 0, 1);
 	configRegisterInt("Input.UseRawInput", &useRawInput, 0, 1);
 
