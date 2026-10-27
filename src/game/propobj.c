@@ -4499,6 +4499,14 @@ void weaponTick(struct prop *prop)
 				obj->hidden |= OBJHFLAG_DELETING;
 			}
 		}
+
+		// RemoteMineFix: Because we're giving remotemines a fulltick for every player, every frame
+		// (to allow any player's mines to detonate in any frame) we'll return early here all but once
+		// a frame so we don't repeat the hardfree shenanigans towards the end of the function.
+		if (g_Vars.currentplayernum != playermgrGetPlayerAtOrder(0)) {
+			return;
+		}
+
 	} else if (weapon->weaponnum == WEAPON_PROXIMITYMINE
 			|| (weapon->weaponnum == WEAPON_DRAGON && weapon->gunfunc == FUNC_SECONDARY)
 			|| (weapon->weaponnum == WEAPON_GRENADE && weapon->gunfunc == FUNC_SECONDARY)
@@ -4714,11 +4722,17 @@ void weaponTick(struct prop *prop)
 void func0f07063c(struct prop *prop, bool arg1)
 {
 	struct defaultobj *obj = prop->obj;
+	struct weaponobj* weapon;
 
-	if (arg1) {
-		if (obj->type == OBJTYPE_AMMOCRATE || obj->type == OBJTYPE_MULTIAMMOCRATE) {
-			ammocrateTick(prop);
-		} else if (obj->type == OBJTYPE_WEAPON) {
+	if (arg1 && (obj->type == OBJTYPE_AMMOCRATE || obj->type == OBJTYPE_MULTIAMMOCRATE)) {
+		ammocrateTick(prop);
+	}
+	else if (obj->type == OBJTYPE_WEAPON) {
+		weapon = prop->weapon;
+		//RemoteMineFix: Allow Remote Mines to be ticked for every player every frame.
+		//This ensures that every player's mines get a chance to explode before gPlayersDetonatingMines
+		//gets reset in alarmTick (in the last player's propsTickPlayer tick).
+		if (arg1 || weapon->weaponnum == WEAPON_REMOTEMINE) {
 			weaponTick(prop);
 		}
 	}
