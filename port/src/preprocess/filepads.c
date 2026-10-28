@@ -266,6 +266,12 @@ static u32 convertPadsFile(u8 *dst, u8 *src)
 	host_header->ptr_waygroups = (dstpos);
 	dstpos = convertWayGroups(dst, dstpos, src, PD_BE32(n64_header->ptr_waygroups));
 
+    // On 32bit ARM the covers MUST be 32bit aligned for float access, otherwise SIGBUS
+    // This fixes crash when starting level 3
+#if PLATFORM_ARM == 7
+    dstpos = (dstpos + 3) & ~3u;
+#endif
+
 	// Cover
 	host_header->ptr_cover = (dstpos);
 	dstpos = convertCover(dst, dstpos, src, PD_BE32(n64_header->ptr_cover), num_covers);
