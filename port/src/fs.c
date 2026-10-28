@@ -187,6 +187,10 @@ const char *fsGetModDir(void)
 	return modDir[0] ? modDir : NULL;
 }
 
+void fsSetModDir(const char *path) {
+	strncpy(modDir, path, FS_MAXPATH);
+}
+
 s32 fsFileLoadTo(const char *name, void *dst, u32 dstSize)
 {
 	const char *fullName = fsFullPath(name);

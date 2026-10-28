@@ -15,6 +15,7 @@
 #include "romdata.h"
 #include "config.h"
 #include "mod.h"
+#include "patch.h"
 #include "system.h"
 #include "utils.h"
 
@@ -108,6 +109,7 @@ int main(int argc, const char **argv)
 	inputInit();
 	audioInit();
 	romdataInit();
+	patchInit();
 
 	g_ValidGbcRomFound = romdataCheckGbcRom();
 

@@ -66,13 +66,6 @@ enum loadsource {
 	SRC_EXTERNAL
 };
 
-struct romfilepatch {
-	u32 ofs;
-	u32 len;
-	const char *src;
-	const char *dst;
-};
-
 struct romfile {
 	u8 **segstart;
 	u8 **segend;
@@ -82,21 +75,9 @@ struct romfile {
 	preprocessfunc preprocess;
 	s32 source; // enum loadsource
 	s32 preprocessed;
-	const struct romfilepatch *patches;
-	u32 numpatches;
 };
 
-/* patches for individual files; applied on file load, before preprocFuncs, but */
-/* after unzip; only applied when loading from a ROM file                       */
-static const struct romfilepatch filePatches[] = {
-	/* FILE_USETUPLUE: fixes Jon's double "if what" in Infiltration outro */
-	{ 0x92a2, 1, "\x6c", "\x99" },
-	{ 0x92b0, 1, "\x6c", "\x99" },
-};
-
-static struct romfile fileSlots[ROMDATA_MAX_FILES] = {
-	[FILE_USETUPLUE] = { .patches = &filePatches[0], .numpatches = 2 },
-};
+static struct romfile fileSlots[ROMDATA_MAX_FILES];
 
 #define ROMSEG_START(n) _ ## n ## SegmentRomStart
 #define ROMSEG_END(n) _ ## n ## SegmentRomEnd
@@ -490,8 +471,6 @@ u8 *romdataFileLoad(s32 fileNum, u32 *outSize)
 				fileSlots[fileNum].data = out;
 				fileSlots[fileNum].size = size;
 				fileSlots[fileNum].source = SRC_EXTERNAL;
-				// external file; do not apply patches to this
-				fileSlots[fileNum].numpatches = 0;
 			}
 		}
 		// tried and failed, fall back to ROM
@@ -518,17 +497,7 @@ void romdataFilePreprocess(s32 fileNum, s32 loadType, u8 *data, u32 size, u32 *o
 
 	if (data && size /* && !fileSlots[fileNum].preprocessed*/) {
 		if (loadType && loadType < (u32)ARRAYCOUNT(filePreprocFuncs) && filePreprocFuncs[loadType]) {
-			// apply patches
-			for (u32 i = 0; i < fileSlots[fileNum].numpatches; ++i) {
-				const struct romfilepatch *p = &fileSlots[fileNum].patches[i];
-				if (!memcmp(data + p->ofs, p->src, p->len)) {
-					memcpy(data + p->ofs, p->dst, p->len);
-					sysLogPrintf(LOG_NOTE, "file %d (%s) patched at offset 0x%x", fileNum, fileSlots[fileNum].name, p->ofs);
-				}
-			}
-			// then preprocess
 			filePreprocFuncs[loadType](data, size, outSize);
-			// fileSlots[fileNum].preprocessed = 1;
 		}
 	}
 }
