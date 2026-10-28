@@ -24,6 +24,7 @@ struct GfxInitSettings {
     struct GfxWindowManagerAPI *wapi;
     struct GfxRenderingAPI *rapi;
     struct GfxWindowInitSettings window_settings;
+    bool render_to_fbo;
 };
 
 extern struct GfxDimensions gfx_current_window_dimensions; // The dimensions of the window

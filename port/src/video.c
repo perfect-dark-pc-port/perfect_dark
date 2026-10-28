@@ -40,6 +40,7 @@ static s32 vidCenter = false;
 static s32 vidAllowHiDpi = false;
 static s32 vidVsync = 1;
 static s32 vidMSAA = 1;
+static s32 vidRenderToFBO = 0;
 static s32 vidFramerateLimit = 0;
 
 static s32 vidDisplayFPS = 0;
@@ -95,7 +96,8 @@ s32 videoInit(void)
 			.maximized = vidMaximize,
 			.centered = vidCenter,
 			.allow_hidpi = vidAllowHiDpi
-		}
+		},
+		.render_to_fbo = (bool)vidRenderToFBO
 	};
 
 	gfx_init(&set);
@@ -574,6 +576,7 @@ PD_CONSTRUCTOR static void videoConfigInit(void)
 	configRegisterInt("Video.AllowHiDpi", &vidAllowHiDpi, 0, 1);
 	configRegisterInt("Video.VSync", &vidVsync, -1, 10);
 	configRegisterInt("Video.FramebufferEffects", &vidFramebuffers, 0, 1);
+	configRegisterInt("Video.RenderToFBO", &vidRenderToFBO, 0, 1);
 	configRegisterInt("Video.FramerateLimit", &vidFramerateLimit, 0, VIDEO_MAX_FPS);
 	configRegisterInt("Video.DisplayFPS", &vidDisplayFPS, 0, 1);
 	configRegisterFloat("Video.DisplayFPSInterval", &vidDisplayFPSInterval, 0.01f, 32.f);

@@ -218,6 +218,7 @@ bool gfx_framebuffers_enabled = true;
 bool gfx_detail_textures_enabled = true;
 
 static bool game_renders_to_framebuffer;
+static bool render_to_fbo;
 static int game_framebuffer;
 static int game_framebuffer_msaa_resolved;
 
@@ -2549,6 +2550,7 @@ extern "C" void gfx_get_dimensions(uint32_t* width, uint32_t* height, int32_t* p
 extern "C" void gfx_init(const GfxInitSettings *settings) {
     gfx_wapi = settings->wapi;
     gfx_rapi = settings->rapi;
+    render_to_fbo = settings->render_to_fbo;
     gfx_wapi->init(&settings->window_settings);
     gfx_rapi->init();
     gfx_rapi->update_framebuffer_parameters(0, settings->window_settings.width, settings->window_settings.height, 1, false, true, true, true);
@@ -2631,7 +2633,7 @@ extern "C" void gfx_start_frame(void) {
 
     bool different_size = gfx_current_dimensions.width != gfx_current_game_window_viewport.width ||
                           gfx_current_dimensions.height != gfx_current_game_window_viewport.height;
-    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1)) {
+    if (gfx_framebuffers_enabled && (different_size || gfx_msaa_level > 1 || render_to_fbo)) {
         game_renders_to_framebuffer = true;
         if (different_size) {
             gfx_rapi->update_framebuffer_parameters(game_framebuffer, gfx_current_dimensions.width,
@@ -2700,6 +2702,8 @@ extern "C" void gfx_run(Gfx* commands) {
             } else {
                 gfx_rapi->resolve_msaa_color_buffer(0, game_framebuffer);
             }
+        } else if (render_to_fbo) {
+            gfx_rapi->resolve_msaa_color_buffer(0, game_framebuffer);
         } else {
             gfxFramebuffer = (uintptr_t)gfx_rapi->get_framebuffer_texture_id(game_framebuffer);
         }
@@ -2787,7 +2791,7 @@ extern "C" void gfx_copy_framebuffer(int fb_dst, int fb_src, int left, int top, 
             // flip Y
             top = gfx_current_dimensions.height - top - 1;
         }
-        if (use_back && gfx_msaa_level > 1) {
+        if (use_back && game_renders_to_framebuffer && (gfx_msaa_level > 1 || render_to_fbo)) {
             // read from the framebuffer we've been rendering to
             fb_src = game_framebuffer;
         }
