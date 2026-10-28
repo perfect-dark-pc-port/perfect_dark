@@ -183,6 +183,7 @@ extern u32 g_CheatsActiveBank0;
 extern u32 g_CheatsActiveBank1;
 extern u32 g_CheatsEnabledBank0;
 extern u32 g_CheatsEnabledBank1;
+extern s32 g_LaptopTurretLimit;
 extern s32 g_FilemgrLastPakError;
 extern struct gamefile g_GameFile;
 extern struct fileguid g_GameFileGuid;

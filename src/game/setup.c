@@ -297,13 +297,18 @@ void propsReset(void)
 	g_AutogunDamageRxScale = 1;
 	g_AmmoQuantityScale = 1;
 
-	g_MaxThrownLaptops = g_Vars.normmplayerisrunning ? 12 : PLAYERCOUNT();
+	// Large fixed pool for thrown laptop turrets (was per-player singleton).
+	// 16 is conservative for the early MEMPOOL_STAGE but still allows
+	// far more simultaneous turrets than the original limit of 1.
+	g_MaxThrownLaptops = 16;
 
 	g_ThrownLaptops = mempAlloc(ALIGN16(g_MaxThrownLaptops * sizeof(struct autogunobj)), MEMPOOL_STAGE);
 	g_ThrownLaptopBeams = mempAlloc(ALIGN16(g_MaxThrownLaptops * sizeof(struct beam)), MEMPOOL_STAGE);
 
-	for (i = 0; i < g_MaxThrownLaptops; i++) {
-		g_ThrownLaptops[i].base.prop = NULL;
+	if (g_ThrownLaptops) {
+		for (i = 0; i < g_MaxThrownLaptops; i++) {
+			g_ThrownLaptops[i].base.prop = NULL;
+		}
 	}
 }
 

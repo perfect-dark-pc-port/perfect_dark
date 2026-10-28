@@ -1284,8 +1284,13 @@ void frEndSession(bool hidetargets)
 			frHideAllTargets();
 		}
 
-		if (g_ThrownLaptops[0].base.prop) {
-			objFreePermanently(&g_ThrownLaptops[0].base, true);
+		// Free any active thrown laptops (pool may contain several after the multi-turret change)
+		if (g_ThrownLaptops) {
+			for (i = 0; i < g_MaxThrownLaptops; i++) {
+				if (g_ThrownLaptops[i].base.prop) {
+					objFreePermanently(&g_ThrownLaptops[i].base, true);
+				}
+			}
 		}
 
 		roomsCopy(g_Vars.currentplayer->prop->rooms, rooms);

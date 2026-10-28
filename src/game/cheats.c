@@ -19,6 +19,7 @@ u32 g_CheatsActiveBank0;
 u32 g_CheatsActiveBank1;
 u32 g_CheatsEnabledBank0;
 u32 g_CheatsEnabledBank1;
+s32 g_LaptopTurretLimit = 1;
 
 struct menuitem g_CheatsBuddiesMenuItems[];
 struct menudialogdef g_CheatsBuddiesMenuDialog;
@@ -252,6 +253,7 @@ void cheatsInit(void)
 	g_CheatsActiveBank1 = 0;
 	g_CheatsEnabledBank0 = 0;
 	g_CheatsEnabledBank1 = 0;
+	g_LaptopTurretLimit = 1;
 }
 
 /**
@@ -294,6 +296,7 @@ void cheatsReset(void)
 	} else {
 		g_CheatsActiveBank0 = 0;
 		g_CheatsActiveBank1 = 0;
+		g_LaptopTurretLimit = 1;
 	}
 
 	// Set any "always on" cheats to active and properly activate all active cheats
@@ -420,6 +423,34 @@ char *cheatGetNameIfUnlocked(struct menuitem *item)
 	}
 
 	return langGet(L_MPWEAPONS_074); // "----------"
+}
+
+/**
+ * Slider handler for the number of laptop sentry guns the player may deploy at once.
+ * Value is stored in g_LaptopTurretLimit (read by laptopDeploy).
+ * Default 1 restores original single-turret behavior.
+ */
+MenuItemHandlerResult cheatMenuHandleLaptopTurretLimit(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GETSLIDER:
+		data->slider.value = g_LaptopTurretLimit;
+		break;
+	case MENUOP_SET:
+		g_LaptopTurretLimit = data->slider.value;
+		if (g_LaptopTurretLimit < 1) {
+			g_LaptopTurretLimit = 1;
+		}
+		if (g_LaptopTurretLimit > 16) {
+			g_LaptopTurretLimit = 16;
+		}
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		sprintf(data->slider.label, "%d\n", g_LaptopTurretLimit);
+		break;
+	}
+
+	return 0;
 }
 
 MenuDialogHandlerResult cheatMenuHandleDialog(s32 operation, struct menudialogdef *dialogdef, union handlerdata *data)
@@ -834,6 +865,7 @@ MenuItemHandlerResult cheatMenuHandleTurnOffAllCheats(s32 operation, struct menu
 	if (operation == MENUOP_SET) {
 		g_CheatsEnabledBank0 = 0;
 		g_CheatsEnabledBank1 = 0;
+		g_LaptopTurretLimit = 1;
 	}
 
 	return false;
@@ -1405,6 +1437,16 @@ struct menuitem g_CheatsWeaponsMenuItems[] = {
 		(uintptr_t)&cheatGetNameIfUnlocked,
 		0,
 		cheatCheckboxMenuHandler,
+	},
+	// Slider to control how many laptop sentry turrets the player can have active at once.
+	// Placed directly under the Unlimited Ammo - Laptop Sentry Gun option as requested.
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_SLIDER_ALTSIZE | MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Sentry Gun Limit",
+		16,
+		cheatMenuHandleLaptopTurretLimit,
 	},
 	{
 		MENUITEMTYPE_CHECKBOX,

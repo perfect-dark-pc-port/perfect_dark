@@ -15365,9 +15365,10 @@ void objDamage(struct defaultobj *obj, f32 damage, struct coord *pos, s32 weapon
 {
 	// Store the attacker playernum into the object's "hidden" field
 #if VERSION >= VERSION_NTSC_1_0
-	// ...but not for deployed laptop guns in multiplayer, because those bits
-	// designate the owner of the gun
-	if (obj->type != OBJTYPE_AUTOGUN || !g_Vars.normmplayerisrunning) {
+	// ...but not for thrown laptop guns (they use the bits for owner),
+	// and not for other AUTOGUNs in multiplayer.
+	if ((obj->flags & OBJFLAG_THROWNLAPTOP) == 0 &&
+			(obj->type != OBJTYPE_AUTOGUN || !g_Vars.normmplayerisrunning)) {
 		obj->hidden &= 0x0fffffff;
 		obj->hidden |= (playernum << 28) & 0xf0000000;
 	}
@@ -16209,6 +16210,7 @@ bool propobjInteract(struct prop *prop)
 		if (obj->type == OBJTYPE_AUTOGUN) {
 			struct autogunobj *laptop = (struct autogunobj *)obj;
 			s32 playernum;
+			s32 laptopowner;
 
 			if (g_Vars.normmplayerisrunning) {
 				playernum = mpPlayerGetIndex(g_Vars.currentplayer->prop->chr);
@@ -16216,7 +16218,9 @@ bool propobjInteract(struct prop *prop)
 				playernum = g_Vars.currentplayernum;
 			}
 
-			if (playernum >= 0 && laptop == &g_ThrownLaptops[playernum]) {
+			laptopowner = (obj->hidden & 0xf0000000) >> 28;
+
+			if (playernum >= 0 && laptopowner == playernum) {
 				obj->hidden |= OBJHFLAG_DELETING;
 				invGiveSingleWeapon(WEAPON_LAPTOPGUN);
 				currentPlayerQueuePickupWeaponHudmsg(WEAPON_LAPTOPGUN, false);
@@ -18482,27 +18486,67 @@ struct autogunobj *laptopDeploy(s32 modelnum, struct gset *gset, struct chrdata 
 	struct prop *prop;
 	struct model *model;
 	struct autogunobj *laptop = NULL;
-	s32 index;
+	s32 i;
+	s32 index = -1;
+	s32 playernum;
+	s32 count;
+	s32 owner;
 
+	// Determine the owner playernum for quota counting (same logic as before)
 	if (g_Vars.normmplayerisrunning) {
-		index = mpPlayerGetIndex(chr);
+		playernum = mpPlayerGetIndex(chr);
 	} else {
-		index = playermgrGetPlayerNumByProp(chr->prop);
+		playernum = playermgrGetPlayerNumByProp(chr->prop);
 	}
 
-	if (index >= 0 && index < g_MaxThrownLaptops) {
+	// Enforce per-player concurrent limit from the cheat slider (default 1 for vanilla behavior).
+	// If the player already has g_LaptopTurretLimit active turrets, evict the first one we find
+	// (with explosion) so the new one can take a slot. This gives "N at once; N+1 replaces".
+	if (playernum >= 0 && g_ThrownLaptops) {
+		count = 0;
+		for (i = 0; i < g_MaxThrownLaptops; i++) {
+			if (g_ThrownLaptops[i].base.prop) {
+				owner = (g_ThrownLaptops[i].base.hidden & 0xf0000000) >> 28;
+				if (owner == playernum) {
+					count++;
+				}
+			}
+		}
+
+		if (count >= g_LaptopTurretLimit) {
+			for (i = 0; i < g_MaxThrownLaptops; i++) {
+				if (g_ThrownLaptops[i].base.prop) {
+					owner = (g_ThrownLaptops[i].base.hidden & 0xf0000000) >> 28;
+					if (owner == playernum) {
+#if VERSION >= VERSION_NTSC_1_0
+						explosionCreateSimple(NULL, &g_ThrownLaptops[i].base.prop->pos,
+								g_ThrownLaptops[i].base.prop->rooms, EXPLOSIONTYPE_LAPTOP, playernum);
+#else
+						explosionCreateSimple(NULL, &g_ThrownLaptops[i].base.prop->pos,
+								g_ThrownLaptops[i].base.prop->rooms, EXPLOSIONTYPE_LAPTOP, 0);
+#endif
+						objFreePermanently(&g_ThrownLaptops[i].base, true);
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	// Find a free slot in the pool
+	if (g_ThrownLaptops) {
+		for (i = 0; i < g_MaxThrownLaptops; i++) {
+			if (g_ThrownLaptops[i].base.prop == NULL) {
+				index = i;
+				break;
+			}
+		}
+	}
+
+	if (index >= 0) {
 		setupLoadModeldef(modelnum);
 		modeldef = g_ModelStates[modelnum].modeldef;
 		laptop = &g_ThrownLaptops[index];
-
-		if (laptop->base.prop) {
-#if VERSION >= VERSION_NTSC_1_0
-			explosionCreateSimple(NULL, &laptop->base.prop->pos, laptop->base.prop->rooms, EXPLOSIONTYPE_LAPTOP, index);
-#else
-			explosionCreateSimple(NULL, &laptop->base.prop->pos, laptop->base.prop->rooms, EXPLOSIONTYPE_LAPTOP, 0);
-#endif
-			objFreePermanently(&laptop->base, true);
-		}
 
 		prop = propAllocate();
 		model = modelmgrInstantiateModelWithoutAnim(modeldef);
