@@ -769,3 +769,130 @@ Gfx *artifactsRenderGlaresForRoom(Gfx *gdl, s32 roomnum)
 
 	return gdl;
 }
+
+#ifndef PLATFORM_N64
+
+bool artifactTestDir(struct model *model, struct coord *dir, struct coord *bounds, f32 *lowest_dist)
+{
+	/**
+	 * Test whether a line-of-sight direction originating from the player camera
+	 * intersects the weapon model.
+	 *
+	 * Arguments:
+	 *     model (model): The model object to test
+	 *     dir (coord): The line-of-sight direction to test
+	 *     bounds (coord *): Array of {min, max} coordinates defining the model bounding box
+	 *     lowest_dist (f32 *): Pointer to lowest hit distance
+	 */
+	s32 i;
+	const struct coord origin = {{0., 0., 0.}}; // Camera origin
+	struct coord end = {{dir->x * 32767.0f, dir->y * 32767.0f, dir->z * 32767.0f}}; // Extrapolate direction to the farthest possible end point
+
+	struct modelnode *node = model->definition->rootnode;
+	struct modelnode *endnode = model->definition->rootnode;
+
+	Gfx *opagdl = NULL;
+	Vtx *vertices = NULL;
+
+	bool hit = false;
+
+	// Start by testing bounding box
+	if (bgTestLineIntersectsBbox(&origin, dir, bounds, bounds + 1) == false)
+		return hit;
+
+	/**
+	 * Loop through model nodes to retrieve graphics display list commands
+	 * for the opaque parts of weapons that should block light. This
+	 * seems like the easiest way to account for animation information.
+	 */
+	while (node) {
+		u32 type = node->type & 0xff;
+
+		if (type == MODELNODETYPE_GUNDL) {
+			struct modelrodata_gundl *rodata = &node->rodata->gundl;
+			if (rodata->opagdl != NULL) {
+				opagdl = (Gfx *)((uintptr_t)rodata->baseaddr + ((uintptr_t)UNSEGADDR(rodata->opagdl) & 0xffffff));
+				vertices = (void *)(uintptr_t)rodata->baseaddr;
+				/**
+				 * Test for intersection with the weapon model
+				 */
+				if (bgTestHitOnWeapon(model, &origin, &end, dir, opagdl, NULL, vertices, bounds, lowest_dist))
+					hit = true;
+			}
+		}
+
+		if (node->child) {
+			node = node->child;
+		} else {
+			while (node) {
+				if (node == endnode) {
+					node = NULL;
+					break;
+				}
+
+				if (node->next) {
+					node = node->next;
+					break;
+				}
+
+				node = node->parent;
+			}
+		}
+	}
+
+	return hit;
+}
+
+void artifactsUpdateGlaresForPlayer(struct model *gunmodel, struct model *handmodel, bool hand, f32 znear, f32 zfar)
+{
+	/**
+	 * Update light artifacts to account for the player weapon
+	 * position on the screen. This must be called before weapon
+	 * matrices are wiped at the end of bgunRender().
+	 */
+	if ((g_Vars.currentplayer->devicesactive & (DEVICE_CLOAKRCP120 | DEVICE_CLOAKDEVICE)) ||
+		(g_Vars.currentplayer->prop->chr->cloakfadefrac > 0)) return;
+
+	s32 i, j;
+	struct coord gundir2d;
+	struct artifact *artifacts = schedGetWriteArtifacts();
+
+	const f32 max = 1e6;
+
+	f32 lowest_dist = max;
+
+	struct coord gunbounds[2] = {{max, max, max}, {-max, -max, -max}};
+	struct coord handbounds[2] = {{max, max, max}, {-max, -max, -max}};
+
+	for (i = 0; i < MAX_ARTIFACTS; i++) {
+		struct artifact *artifact = &artifacts[i];
+
+		if (artifact->type != ARTIFACTTYPE_FREE && artifact->visiblelos) {
+			// Get the direction of this light artifact from the player's perspective
+			f32 crosspos[2] = { (f32)artifact->screenx, (f32)artifact->screeny };
+			cam0f0b4c3c(crosspos, &gundir2d, 1.0f);
+			/**
+			 * Test whether this direction intersects the gun or hand model
+			 *
+			 * Note: We use an OR for speed, but it would be more accurate to
+			 * always test both the gun and hand models to check for a closer
+			 * lowest_dist. It's probably fine in most cases.
+			 */
+			if (artifactTestDir(gunmodel, &gundir2d, gunbounds, &lowest_dist) || (hand && artifactTestDir(handmodel, &gundir2d, handbounds, &lowest_dist))) {
+				/**
+				 * Compute N64 depth value for comparison with the artifact's expected depth.
+				 * This is needed to account for the fact that the weapon draw uses different
+				 * znear/zfar settings compared to the global settings from vi.
+				 */
+				f32 z = -gundir2d.z * lowest_dist;
+				f32 znorm = (1/z - 1/znear) / (1/zfar - 1/znear);
+				u16 actualdepth = floatToN64Depth(32704.0f * znorm) >> 2;
+
+				artifact->visiblelos = actualdepth > artifact->expecteddepth;
+			}
+		}
+
+	}
+}
+
+#endif

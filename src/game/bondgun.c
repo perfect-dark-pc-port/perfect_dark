@@ -54,6 +54,7 @@
 #include "data.h"
 #include "types.h"
 #ifndef PLATFORM_N64
+#include "game/artifact.h"
 #include "game/stagetable.h"
 #include "video.h"
 #include "platform.h"
@@ -11167,7 +11168,10 @@ void bgunRender(Gfx **gdlptr)
 				modelRender(&renderdata, &hand->handmodel);
 				renderdata.envcolour = prevcolour;
 			}
-
+#ifndef PLATFORM_N64
+			// Update light artifacts to account for gun and hand models
+			artifactsUpdateGlaresForPlayer(&hand->gunmodel, &hand->handmodel, player->gunctrl.handmodeldef && renderhand, 1.5, 1000);
+#endif
 			// Clean up
 			gdl = renderdata.gdl;
 

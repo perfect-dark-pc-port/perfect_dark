@@ -104,6 +104,7 @@ void bgCalculatePortalBbox(s32 portalnum, struct coord *bbmin, struct coord *bbm
 void bgFindEnteredRooms(struct coord *bbmin, struct coord *upper, RoomNum *rooms, s32 maxlen, bool arg4);
 #ifndef PLATFORM_N64
 void bgCalculateGlaresForVisibleRooms(void);
+bool bgTestHitOnWeapon(struct model *model, struct coord *origin, struct coord *end, struct coord *dir, Gfx *gdl, Gfx *gdl2, Vtx *vertices, struct coord *bounds, f32 *lowest_dist);
 #endif
 
 #endif
