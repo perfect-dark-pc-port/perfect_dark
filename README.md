@@ -123,7 +123,25 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.\
 6. Run `cmake --build build -j4 -- -O`.
 7. The resulting executable will be at `build/pd.x86_64.exe` (or at `build/pd.i686.exe` if building for i686).
-8. If you don't know where you downloaded the source to, you can run `explorer .` to open the current directory.
+8. Remember you need MSYS libraries to run the executable outside MSYS environments, for that you must copy the files `SDL2.dll, zlib1.dll, libwinpthread-1.dll & libgcc_s_seh-1.dll` to the same folder of the executable. the next commands can create a folder called `bin` at the root of the source code with all needed files:  
+   ```
+   mkdir -p bin/data
+   cp build/pd.x86_64.exe bin/
+   cp build_pal/pd.pal.x86_64.exe bin/
+   cp build_jpn/pd.jpn.x86_64.exe bin/
+   cp /mingw64/bin/{SDL2.dll,zlib1.dll,libwinpthread-1.dll,libgcc_s_seh-1.dll} bin/
+   touch bin/data/put_your_rom_here.txt
+   ```
+   Or if you are running MinGW32 the next set of commands:
+   ```
+   mkdir -p bin/data
+   cp build/pd.i686.exe bin/
+   cp build_pal/pd.pal.i686.exe bin/
+   cp build_jpn/pd.jpn.i686.exe bin/
+   cp /mingw32/bin/{SDL2.dll,zlib1.dll,libgcc_s_dw2-1.dll,libwinpthread-1.dll} bin/
+   touch bin/data/put_your_rom_here.txt
+   ```
+9. If you don't know where you downloaded the source to, you can run `explorer .` to open the current directory.
 
 ### Linux
 
@@ -188,8 +206,14 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
    * Execute command: `aarch64-none-elf-cmake -G"Unix Makefiles" -Bbuild .`
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.
 7. Build:
-   * Execute command: `make -C build -j4`
+   * Execute command: `make -C build -j$(nproc)`.  Also yo can execute `make -C build_pal -j$(nproc)` or `make -C build_jpn -j$(nproc)` to build the PAL and JPN versions
 8. The resulting executable will be at `build/pd.arm64.nro`.
+9. to create a `build` folder with all files needed (except the ROM) you can execute the commands:
+    ```
+    mkdir -p bin/perfectdark/data
+    cp build/pd.arm64.nro bin/perfectdark/
+    touch bin/perfectdark/data/put_your_rom_here.txt
+    ```
 
 ### Notes
 
