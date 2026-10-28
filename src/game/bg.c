@@ -1514,19 +1514,13 @@ void bgReset(s32 stagenum)
 	var8007fc54 = inflatedsize - primcompsize;
 	var8007fc54 -= 0xc;
 
-#ifdef PLATFORM_64BIT
 	inflatedsize = romdataFileGetEstimatedSize(inflatedsize, LOADTYPE_BG);
-#endif
-
-	inflatedsize = ALIGN16(inflatedsize);
 
 	// Allocate space for the primary bg data
-	// An extra 0x8000 or so is given as temporary scratch space
-	g_BgPrimaryData = mempAlloc(ALIGN16(inflatedsize + 0x8010), MEMPOOL_STAGE);
+	g_BgPrimaryData = mempAlloc(ALIGN16(inflatedsize), MEMPOOL_STAGE);
 
 	// Set up pointer to scratch space
-	scratch = (uintptr_t) g_BgPrimaryData + inflatedsize - primcompsize;
-	scratch = ALIGN16(scratch + 0x8000);
+	scratch = (uintptr_t)mempAlloc(ALIGN16(primcompsize + 15), MEMPOOL_STAGE);
 
 	g_LoadType = LOADTYPE_BG;
 
@@ -1560,16 +1554,9 @@ void bgReset(s32 stagenum)
 	// This is the cause and fix for the Challenge 7 memory corruption bug in
 	// NTSC 1.0. A full writeup about the bug and how the fix works can be found
 	// in the docs folder of this project.
-#ifdef AVOID_UB
 	section2 = mempAlloc(inflatedsize + section2compsize, MEMPOOL_STAGE);
-	scratch = (uintptr_t) section2 + inflatedsize;
-#elif VERSION >= VERSION_NTSC_FINAL
-	section2 = mempAlloc(inflatedsize + 0x8000, MEMPOOL_STAGE);
-	scratch = (uintptr_t) section2 + 0x8000;
-#else
-	section2 = mempAlloc(inflatedsize + 0x800, MEMPOOL_STAGE);
-	scratch = (uintptr_t) section2 + 0x800;
-#endif
+	mempRealloc((void*)scratch, 0, MEMPOOL_STAGE);
+	scratch = (uintptr_t)mempAlloc(ALIGN16(section2compsize), MEMPOOL_STAGE);
 
 	// Load compressed data from ROM to scratch
 	bgLoadFile((u8 *) scratch, section2start + 4, ((section2compsize - 1) | 0xf) + 1);
@@ -1934,16 +1921,8 @@ void bgBuildTables(s32 stagenum)
 		inflatedsize = (inflatedsize | 0xf) + 1;
 
 		// Load and inflate section 3
-#ifdef AVOID_UB
-		section3 = mempAlloc(inflatedsize + section3compsize, MEMPOOL_STAGE);
+		section3 = mempAlloc(ALIGN16(inflatedsize + section3compsize), MEMPOOL_STAGE);
 		scratch = section3 + inflatedsize;
-#elif VERSION >= VERSION_NTSC_FINAL
-		section3 = mempAlloc(inflatedsize + 0x8000, MEMPOOL_STAGE);
-		scratch = section3 + 0x8000;
-#else
-		section3 = mempAlloc(inflatedsize + 0x1000, MEMPOOL_STAGE);
-		scratch = section3 + 0x1000;
-#endif
 
 		bgLoadFile(scratch, g_BgSection3 + 4, ((section3compsize - 1) | 0xf) + 1);
 		bgInflate(scratch, section3, section3compsize);

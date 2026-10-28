@@ -1585,6 +1585,7 @@
 #define MEMPOOL_PERMANENT 6 // Never cleared
 #define MEMPOOL_7         7
 #define MEMPOOL_8         8
+#define MEMPOOL_ADHOC     9
 
 #define MENUBANNER_SEARCHINGFORCAMERA 0
 #define MENUBANNER_CALIBRATINGCAMERA  1

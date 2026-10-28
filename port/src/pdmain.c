@@ -74,9 +74,6 @@
 #include "types.h"
 #include "system.h"
 
-extern u8 *g_MempHeap;
-extern u32 g_MempHeapSize;
-
 void rngSetSeed(u32 seed);
 
 bool var8005d9b0 = false;
@@ -241,8 +238,6 @@ void mainInit(void)
 	if (var8005d9b0) {
 		argSetString("          -ml0 -me0 -mgfx100 -mvtx50 -mt700 -ma400");
 	}
-
-	mempSetHeap(g_MempHeap, g_MempHeapSize);
 
 	mempResetPool(MEMPOOL_8);
 	mempResetPool(MEMPOOL_PERMANENT);
@@ -423,7 +418,7 @@ void mainLoop(void)
 			g_MainMemaHeapSize = strtol(argFindByPrefix(1, "-ma"), NULL, 0) * 1024;
 		}
 
-		memaReset(mempAlloc(g_MainMemaHeapSize, MEMPOOL_STAGE), g_MainMemaHeapSize);
+		memaReset();
 		langReset(g_StageNum);
 		playermgrReset();
 
