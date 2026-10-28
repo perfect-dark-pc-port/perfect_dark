@@ -49,7 +49,11 @@ f32 g_SunScreenYPositions[4];
 f32 g_SkyCloudOffset = 0;
 f32 g_SkyWindSpeed = 1;
 f32 g_SunAlphaFracs[3] = {0};
+#ifdef PLATFORM_N64
 s32 g_SunFlareTimers240[3] = {0};
+#else
+s32 *g_SunFlareTimers240;
+#endif
 
 void skyGetWorldPosFromScreenPos(f32 left, f32 top, struct coord *dst)
 {
@@ -2576,8 +2580,12 @@ Gfx *skyRenderSuns(Gfx *gdl, bool xray)
 	env = envGetCurrent();
 
 	xscale = 1;
-
+#ifdef PLATFORM_N64
 	if (env->numsuns <= 0 || !g_ZbufPtr1 || g_Vars.mplayerisrunning) {
+#else
+	g_SunFlareTimers240 = schedGetPlayerSunTimers();
+	if (env->numsuns <= 0 || !g_ZbufPtr1 || (g_Vars.mplayerisrunning && g_SplitscreenGlares == false)) {
+#endif
 		return gdl;
 	}
 
@@ -2791,6 +2799,12 @@ Gfx *skyRenderFlare(Gfx *gdl, f32 x, f32 y, f32 intensityfrac, f32 size, s32 fla
 
 	xdist = (x - viGetViewWidth() / 2.0f) * 0.01f;
 	ydist = (y - viGetViewHeight() / 2.0f) * 0.01f;
+#ifndef PLATFORM_N64
+	if (g_Vars.mplayerisrunning && g_SplitscreenGlares) {
+		xdist -= viGetViewLeft() * 0.01f;
+		ydist -= viGetViewTop() * 0.01f;
+	}
+#endif
 
 	// Render the source artifact (eg. the artifact that is on top of the sun)
 	texSelect(&gdl, &g_TexLightGlareConfigs[6], 4, 0, 2, 1, NULL);
@@ -2890,6 +2904,12 @@ Gfx *skyRenderFlare(Gfx *gdl, f32 x, f32 y, f32 intensityfrac, f32 size, s32 fla
 	// Check if the source is close to the center of the screen and create the bloom effect if so
 	xdist = viGetViewWidth() / 2.0f - x;
 	ydist = viGetViewHeight() / 2.0f - y;
+#ifndef PLATFORM_N64
+	if (g_Vars.mplayerisrunning && g_SplitscreenGlares) {
+		xdist += viGetViewLeft();
+		ydist += viGetViewTop();
+	}
+#endif
 
 	f12 = (40.0f - sqrtf(xdist * xdist + ydist * ydist)) * 0.0125f;
 
@@ -3050,7 +3070,11 @@ Gfx *skyRenderArtifacts(Gfx *gdl)
 		gdl = skyRenderTeleportFlares(gdl);
 	}
 
+#ifdef PLATFORM_N64
 	if (env->numsuns <= 0 || !g_ZbufPtr1 || g_Vars.mplayerisrunning) {
+#else
+	if (env->numsuns <= 0 || !g_ZbufPtr1 || (g_Vars.mplayerisrunning && g_SplitscreenGlares == false)) {
+#endif
 		return gdl;
 	}
 

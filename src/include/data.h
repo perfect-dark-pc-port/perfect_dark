@@ -401,7 +401,11 @@ extern struct hatposition var8007dae4[1][6];
 extern f32 g_SkyCloudOffset;
 extern f32 g_SkyWindSpeed;
 extern f32 g_SunAlphaFracs[];
+#ifdef PLATFORM_N64
 extern s32 g_SunFlareTimers240[];
+#else
+extern s32 *g_SunFlareTimers240;
+#endif
 extern u32 var8007dba0;
 extern u32 var8007dbb8;
 extern u32 var8007dbd0;
@@ -558,6 +562,7 @@ extern s32 g_TickExtraSleep;
 extern s32 g_MusicDisableMpDeath;
 extern s32 g_BgunGeMuzzleFlashes;
 extern s32 g_FileAutoSelect;
+extern s32 g_SplitscreenGlares;
 
 extern u8 g_MpWeaponSetRandomFilters[NUM_MPWEAPONS];
 extern s32 g_MpWeaponRandomFilterNum;

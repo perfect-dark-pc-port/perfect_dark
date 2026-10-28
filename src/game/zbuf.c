@@ -183,10 +183,11 @@ u16 *zbufGetArtifactsCfb(s32 index)
  * since drawing them requires clearing the zbuffer
  * to avoid clipping the gun model on floors and walls.
  *
- * TODO: determine if this works with the PC port
+ * Note: this is not needed with the PC port. Use shotTestLos() instead.
  */
 Gfx *zbufSaveArtifactDepths(Gfx *gdl)
 {
+#ifdef PLATFORM_N64
 	struct artifact *artifacts = schedGetWriteArtifacts();
 	u32 stack;
 	u16 *zbuf = g_ZbufPtr1;
@@ -260,6 +261,6 @@ Gfx *zbufSaveArtifactDepths(Gfx *gdl)
 	gDPSetColorDither(gdl++, G_CD_BAYER);
 
 	if (samples);
-
+#endif
 	return gdl;
 }

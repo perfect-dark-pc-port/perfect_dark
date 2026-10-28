@@ -137,6 +137,7 @@ u16 g_BgFrameCount = 0xfffe;
 s32 g_BgNumPortalCameraCacheItems = 0;
 #ifndef PLATFORM_N64
 bool g_BgHitXluDisabled = false;
+s32 g_SplitscreenGlares = true;
 #endif
 
 void bgUnpausePropsInRoom(u32 roomnum, bool tintedglassonly)
@@ -1236,7 +1237,11 @@ Gfx *bgRenderArtifacts(Gfx *gdl)
 {
 	s32 i;
 
+#ifdef PLATFORM_N64
 	if (g_Vars.mplayerisrunning == false && g_NumRoomsWithGlares > 0) {
+#else
+	if ((g_Vars.mplayerisrunning == false || g_SplitscreenGlares) && g_NumRoomsWithGlares > 0) {
+#endif
 		gdl = artifactsConfigureForGlares(gdl);
 
 		for (i = 0; i < g_NumRoomsWithGlares; i++) {
@@ -6428,7 +6433,7 @@ void bgCalculateGlaresForVisibleRooms(void)
 	// surfaces before testing for light obstructions
 	g_BgHitXluDisabled = true;
 
-	if (!g_Vars.mplayerisrunning) {
+	if (!g_Vars.mplayerisrunning || g_SplitscreenGlares) {
 		for (i = 1; i < g_Vars.roomcount; i++) {
 			if (g_Rooms[i].flags & ROOMFLAG_ONSCREEN) {
 				artifactsCalculateGlaresForRoom(i);

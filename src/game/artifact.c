@@ -251,6 +251,7 @@ void artifactsCalculateGlaresForRoom(s32 roomnum)
 	if (videoGetGlareBrightness() <= 0.f) {
 		return;
 	}
+	var800a41a0 = schedGetPlayerLightTable();
 #endif
 
 	if (g_Rooms[roomnum].gfxdata != NULL && g_Rooms[roomnum].loaded240) {

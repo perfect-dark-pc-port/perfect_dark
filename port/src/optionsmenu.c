@@ -947,6 +947,19 @@ static MenuItemHandlerResult menuhandlerGeMuzzleFlashes(s32 operation, struct me
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerSplitscreenGlares(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return g_SplitscreenGlares;
+	case MENUOP_SET:
+		g_SplitscreenGlares = data->checkbox.value;
+		break;
+	}
+
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerUncapTickrate(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	switch (operation) {
@@ -1180,6 +1193,14 @@ struct menuitem g_ExtendedVideoMenuItems[] = {
 		(uintptr_t)"GE64-style Muzzle Flashes",
 		0,
 		menuhandlerGeMuzzleFlashes,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Splitscreen Light Glares",
+		0,
+		menuhandlerSplitscreenGlares,
 	},
 	{
 		MENUITEMTYPE_SLIDER,

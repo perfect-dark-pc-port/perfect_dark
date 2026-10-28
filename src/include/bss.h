@@ -13,7 +13,9 @@ extern s32 var8008de08;
 extern s32 g_ViCurVStart0;
 extern s32 g_ViCurVStart1;
 extern u8 g_SchedSpecialArtifactIndexes[3];
+#ifdef PLATFORM_N64
 extern s32 g_SchedWriteArtifactsIndex;
+#endif
 extern OSPiHandle CartRomHandle;
 extern OSPiHandle LeoDiskHandle;
 extern OSTimer var80090ab0;
