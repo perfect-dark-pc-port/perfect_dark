@@ -191,6 +191,23 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
    * Execute command: `make -C build -j4`
 8. The resulting executable will be at `build/pd.arm64.nro`.
 
+### Web (Emscripten)
+
+1. Set up the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) and activate it, so that `emcmake` is on your `PATH`.
+2. Get the source code:  
+   `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
+3. Configure:
+   * Execute command: `emcmake cmake -G"Unix Makefiles" -Bbuild-web -DCMAKE_BUILD_TYPE=Release .`
+4. Build:
+   * Execute command: `cmake --build build-web -j4`
+5. The result is `build-web/pd.html` plus `pd.js` and `pd.wasm`. Serve the three
+   of them over HTTP - opening `pd.html` from the filesystem will not work,
+   because the browser will not fetch the wasm over `file://`.
+
+The page asks for a ROM, which stays in the tab's memory and is never uploaded.
+Saves and `pd.ini` are kept in the browser through IDBFS, and `pd.ini` can also
+be downloaded from the launcher.
+
 ### Notes
 
 Alternate compilers or toolchains can be specified by passing `-DCMAKE_TOOLCHAIN_FILE=whatever` as normal. The port does not build with Visual Studio.

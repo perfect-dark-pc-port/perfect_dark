@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #endif
 
+#include "platform.h"
 #include "gfx_rendering_api.h"
 #include "gfx_window_manager_api.h"
 
@@ -43,6 +44,15 @@ struct GfxRenderingAPI* gfx_get_current_rendering_api(void);
 void gfx_start_frame(void);
 void gfx_run(Gfx* commands);
 void gfx_end_frame(void);
+#ifdef PLATFORM_WEB
+// Frame interpolation: see the block above gfx_sp_matrix() in gfx_pc.cpp.
+void gfx_set_frame_interpolation(bool enabled, bool new_game_frame, float alpha,
+		uintptr_t pool_base, uint32_t pool_stride);
+void gfx_begin_game_frame_interpolation(void);
+void gfx_register_interpolation_model(const void *matrices, uint32_t count, const void *owner);
+void gfx_register_interpolation_matrix(const void *matrix, uint32_t index, const void *owner);
+void gfx_reset_frame_interpolation(void);
+#endif
 void gfx_set_target_fps(int);
 void gfx_set_texture_filter(enum FilteringMode mode);
 void gfx_set_mipmap_filter(enum MipmapFilteringMode mode);

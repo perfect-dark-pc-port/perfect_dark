@@ -11152,6 +11152,15 @@ void bgunRender(Gfx **gdlptr)
 				}
 			}
 
+#ifdef PLATFORM_WEB
+			// The gun and the hand share this allocation, and it is taken out
+			// of the graphics pool afresh every tick. Named for the hand, which
+			// does live across ticks, so frame interpolation does not mistake
+			// it for whatever held the same offset last tick.
+			videoRegisterInterpolationModel(hand->gunmodel.matrices,
+					hand->gunmodel.definition->nummatrices, hand);
+#endif
+
 			// Render the gun
 			modelRender(&renderdata, &hand->gunmodel);
 

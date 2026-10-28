@@ -73,11 +73,16 @@
 #include "data.h"
 #include "types.h"
 #include "system.h"
+#include "video.h"
 
 extern u8 *g_MempHeap;
 extern u32 g_MempHeapSize;
 
+#ifdef PLATFORM_WEB
+void rngSetSeed(u64 seed);
+#else
 void rngSetSeed(u32 seed);
+#endif
 
 bool var8005d9b0 = false;
 s32 g_StageNum = STAGE_TITLE;
@@ -490,6 +495,11 @@ void mainLoop(void)
 		}
 
 		gfxReset();
+#ifdef PLATFORM_WEB
+		// Display lists and the matrices they point at live in stage memory.
+		// Never replay one across a stage reset.
+		videoDiscardReplayFrame();
+#endif
 		joyReset();
 		dhudReset();
 		zbufReset(g_StageNum);
@@ -500,6 +510,27 @@ void mainLoop(void)
 
 		while (g_MainChangeToStageNum < 0) {
 			const s32 cycles = osGetCount() - g_Vars.thisframestartt;
+#ifdef PLATFORM_WEB
+			if (videoGetDecoupledRendering()) {
+				// frametimeCalculate() rounds elapsed time to authored 60Hz
+				// ticks and carries the remainder, so waiting for exactly this
+				// boundary keeps it from sleeping inside mainTick() - which on
+				// the browser's single thread would stall the page.
+				const s32 tickcycles = CYCLES_PER_FRAME / 2 - g_Vars.lostframetime60t;
+
+				if (tickcycles <= 0 || cycles >= tickcycles) {
+					videoBeginGameFrameInterpolation();
+					schedStartFrame(&g_Sched);
+					mainTick();
+					schedEndFrame(&g_Sched);
+				} else {
+					videoReplayLastFrame((f32)cycles / tickcycles);
+				}
+
+				sysWaitForAnimationFrame();
+				continue;
+			}
+#endif
 			if (!g_Vars.mininc60 || (cycles >= g_Vars.mininc60 * CYCLES_PER_FRAME - CYCLES_PER_FRAME / 2)) {
 				schedStartFrame(&g_Sched);
 				mainTick();
@@ -508,6 +539,14 @@ void mainLoop(void)
 			if (g_TickExtraSleep) {
 				sysSleep(EXTRA_SLEEP_TIME);
 			}
+#ifdef PLATFORM_WEB
+			else {
+				// A native build may busy-poll here; the browser must always
+				// hand its event loop back, including with Extra Sleep turned
+				// off in a saved config.
+				sysSleep(0);
+			}
+#endif
 		}
 
 		lvStop();

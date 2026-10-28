@@ -37,10 +37,14 @@ option(FORCE_CROSSCOMPILE "Force cross compiling" NO)
 
 # Determine target arch
 
-target_architecture(TARGET_ARCH)
-if(TARGET_ARCH STREQUAL "i386")
-  # for historical reasons
-  set(TARGET_ARCH "i686")
+if(EMSCRIPTEN)
+  set(TARGET_ARCH "wasm32")
+else()
+  target_architecture(TARGET_ARCH)
+  if(TARGET_ARCH STREQUAL "i386")
+    # for historical reasons
+    set(TARGET_ARCH "i686")
+  endif()
 endif()
 
 # TODO
@@ -58,7 +62,9 @@ message(STATUS "Target arch: ${TARGET_ARCH}")
 
 # Determine target OS and platform identifier ($arch-$os)
 
-if(WIN32)
+if(EMSCRIPTEN)
+  set(TARGET_OS "web")
+elseif(WIN32)
   # Windows
   set(TARGET_OS "windows")
 elseif(APPLE)
@@ -210,6 +216,12 @@ endif()
 
 set(LIBS )
 
+# SDL2, ZLib and GL. Emscripten provides all three as ports, so it needs none
+# of the finding below and links them through the target options at the bottom.
+if(EMSCRIPTEN)
+  add_compile_options(-sUSE_SDL=2 -sUSE_ZLIB=1)
+else()
+
 # SDL2
 find_package(SDL2 REQUIRED)
 if(NINTENDO_SWITCH)
@@ -254,6 +266,8 @@ if(NOT EXTRA_LIBRARIES)
   endif()
 endif()
 list(APPEND LIBS "${EXTRA_LIBRARIES}")
+
+endif() # NOT EMSCRIPTEN
 
 # Sources
 
@@ -345,6 +359,34 @@ add_executable(pd ${SRC})
 add_dependencies(pd pd_headers)
 target_link_libraries(pd ${LIBS})
 set_target_properties(pd PROPERTIES OUTPUT_NAME "${BIN_NAME}")
+if(EMSCRIPTEN)
+  target_link_options(pd PRIVATE
+    # menuResolveText() tells a language ID from a function pointer by whether
+    # it is below 0x5a00. A WebAssembly function pointer is a table index, so
+    # the table has to start above that boundary the way native code addresses
+    # do.
+    -Wl,--table-base=23040
+    -sUSE_SDL=2
+    -sUSE_ZLIB=1
+    -sMIN_WEBGL_VERSION=2
+    -sMAX_WEBGL_VERSION=2
+    -sFULL_ES3=1
+    -sGL_ENABLE_GET_PROC_ADDRESS=1
+    # The game keeps its original synchronous control flow. sysSleep() and the
+    # animation-frame wait give the browser its event loop back from inside
+    # that, which needs Asyncify rather than a state machine in game code.
+    -sASYNCIFY=1
+    -sALLOW_MEMORY_GROWTH=1
+    -sINITIAL_MEMORY=268435456
+    -sSTACK_SIZE=8388608
+    -sFORCE_FILESYSTEM=1
+    -sENVIRONMENT=web
+    # IDBFS, so saves and pd.ini survive a reload.
+    -lidbfs.js
+    "--shell-file=${CMAKE_SOURCE_DIR}/dist/web/shell.html"
+  )
+  set_target_properties(pd PROPERTIES OUTPUT_NAME "pd" SUFFIX ".html")
+endif()
 if(WIN32)
   set_target_properties(pd PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()

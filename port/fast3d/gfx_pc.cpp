@@ -99,6 +99,38 @@ static std::map<ColorCombinerKey, struct ColorCombiner> color_combiner_pool;
 static std::map<ColorCombinerKey, struct ColorCombiner>::iterator prev_combiner = color_combiner_pool.end();
 
 static uint8_t* tex_upload_buffer = nullptr;
+static size_t tex_upload_buffer_capacity = 0;
+
+// The buffer a tile is decoded into before it is uploaded. It used to be
+// allocated once at the largest size the GPU could accept, which is 256MB on an
+// 8K implementation - more than a wasm heap starts with. Grown to fit instead:
+// a full 4KB of N64 TMEM expands to at most 32KB of RGBA32, so the first
+// allocation covers every tile the game itself loads.
+static void gfx_grow_tex_upload_buffer(size_t required) {
+    if (required <= tex_upload_buffer_capacity) {
+        return;
+    }
+
+    size_t capacity = tex_upload_buffer_capacity ? tex_upload_buffer_capacity : 32 * 1024;
+
+    while (capacity < required) {
+        if (capacity > std::numeric_limits<size_t>::max() / 2) {
+            capacity = required;
+            break;
+        }
+
+        capacity *= 2;
+    }
+
+    void* grown = realloc(tex_upload_buffer, capacity);
+
+    if (!grown) {
+        sysFatalError("Could not allocate %zu bytes for texture conversion", capacity);
+    }
+
+    tex_upload_buffer = (uint8_t*)grown;
+    tex_upload_buffer_capacity = capacity;
+}
 
 static struct RSP {
     float modelview_matrix_stack[11][4][4];
@@ -150,6 +182,25 @@ struct LoadedTexture {
     uint32_t tex_flags;
     struct RawTexMetadata raw_tex_metadata;
 };
+
+// How far the tile about to be decoded expands into that buffer.
+static void gfx_reserve_tex_upload_buffer(const struct LoadedTexture& loaded_texture, uint8_t siz) {
+    size_t expansion;
+
+    switch (siz) {
+    case G_IM_SIZ_4b:  expansion = 8; break;
+    case G_IM_SIZ_8b:  expansion = 4; break;
+    case G_IM_SIZ_16b: expansion = 2; break;
+    case G_IM_SIZ_32b: expansion = 1; break;
+    default: return;
+    }
+
+    if (loaded_texture.size_bytes > std::numeric_limits<size_t>::max() / expansion) {
+        sysFatalError("Texture conversion size overflows address space");
+    }
+
+    gfx_grow_tex_upload_buffer((size_t)loaded_texture.size_bytes * expansion);
+}
 
 static struct RDP {
     uint16_t palette[256];
@@ -904,6 +955,8 @@ static void import_texture(int i, int tile, bool importReplacement) {
         return;
     }
 
+    gfx_reserve_tex_upload_buffer(loaded_texture, siz);
+
     if (fmt == G_IM_FMT_RGBA) {
         if (siz == G_IM_SIZ_16b) {
             import_texture_rgba16(tile, loaded_texture, rdp.tex_lod);
@@ -980,6 +1033,331 @@ static void gfx_matrix_mul(float res[4][4], const float a[4][4], const float b[4
     memcpy(res, tmp, sizeof(tmp));
 }
 
+#ifdef PLATFORM_WEB
+
+/**
+ * Frame interpolation.
+ *
+ * The game ticks at the rate it was authored for and builds one display list
+ * per tick. When the browser can present faster than that, mainLoop() runs the
+ * same list again between ticks (videoReplayLastFrame()) with every matrix in
+ * it swept from the tick before to the current one. Nothing else in the list
+ * changes, so this costs one more gfx_run() and no game work at all.
+ *
+ * The frame the tick itself draws is submitted at alpha 0, which is the
+ * previous tick's position: rendering is one tick behind so that the sweep
+ * between two known positions is an interpolation and not a guess.
+ *
+ * All of it turns on matching a matrix across ticks, which is what
+ * InterpolationMatrixKey is for. A matrix is found either by its address, or -
+ * where the address is no use - by an identity the game registers for it:
+ *
+ * - The game alternates between two equal graphics pools, so the same logical
+ *   allocation is at the same offset within whichever side is current. That
+ *   offset is the key.
+ * - A model's matrices move between the pools with it, but a model that lives
+ *   across ticks (a chr, a prop, the player's gun) can name itself, so the
+ *   matrix is keyed on the model and the index rather than on where it landed
+ *   (gfx_register_interpolation_model()).
+ * - A room's matrix lives in an LRU cache slot, so its address names the slot
+ *   and not the room, and every slot is reallocated when the world is rebased
+ *   on a new room. Rooms register themselves the same way
+ *   (gfx_register_interpolation_matrix()).
+ *
+ * A key that is not found on two consecutive ticks snaps rather than sweeping,
+ * which is what should happen when something comes into view or teleports.
+ */
+
+struct InterpolationMatrixKey {
+    uintptr_t owner;
+    uintptr_t address;
+    uint8_t parameters;
+
+    bool operator==(const InterpolationMatrixKey& other) const {
+        return owner == other.owner && address == other.address && parameters == other.parameters;
+    }
+};
+
+struct InterpolationMatrixKeyHash {
+    size_t operator()(const InterpolationMatrixKey& key) const {
+        const size_t owner_hash = std::hash<uintptr_t>{}(key.owner);
+        const size_t address_hash = std::hash<uintptr_t>{}(key.address);
+        return owner_hash ^ (address_hash << 1) ^ ((size_t)key.parameters << 2);
+    }
+};
+
+struct InterpolationMatrix {
+    float m[4][4];
+};
+
+// Both ticks a sweep runs between, and which tick each was written on. Entries
+// are tagged rather than cleared: an unordered_map::clear() keeps its buckets
+// but still frees every node, which made each tick rebuild the whole registry.
+struct InterpolationMatrixHistory {
+    InterpolationMatrix previous;
+    InterpolationMatrix current;
+    uint64_t previous_generation = 0;
+    uint64_t current_generation = 0;
+};
+
+struct InterpolationModelMatrix {
+    uintptr_t owner;
+    uint32_t index;
+    uint64_t generation;
+};
+
+// A LookAt swept the same way. Every reflection the levels draw is aimed by it,
+// and for a room it is the whole of the lookup, because a room's modelview
+// holds nothing but the room's offset. It is rebuilt once a tick from the
+// camera, so without this it would step at the tick rate over walls that now
+// move at the display's.
+struct InterpolationLookAtHistory {
+    float previous[3];
+    float current[3];
+    uint64_t previous_generation = 0;
+    uint64_t current_generation = 0;
+};
+
+static struct FrameInterpolationState {
+    bool enabled = false;
+    bool new_game_frame = false;
+    float alpha = 0.f;
+    uintptr_t pool_base = 0;
+    uint32_t pool_stride = 0;
+    uint64_t generation = 0;
+    std::unordered_map<InterpolationMatrixKey, InterpolationMatrixHistory, InterpolationMatrixKeyHash> matrices;
+    std::unordered_map<uintptr_t, InterpolationModelMatrix> registered;
+    InterpolationLookAtHistory lookat[2];
+} frame_interpolation;
+
+static uintptr_t gfx_interpolation_address(const int32_t* addr) {
+    const uintptr_t address = (uintptr_t)addr;
+    const uintptr_t pool_size = (uintptr_t)frame_interpolation.pool_stride * 2;
+
+    if (frame_interpolation.pool_base && address >= frame_interpolation.pool_base
+            && address < frame_interpolation.pool_base + pool_size) {
+        // Within the graphics pools: the offset into whichever side this is, so
+        // the same allocation matches itself on the next tick. Top bit set so
+        // an offset cannot collide with an address from anywhere else.
+        return (uintptr_t(1) << (sizeof(uintptr_t) * 8 - 1))
+                | ((address - frame_interpolation.pool_base) % frame_interpolation.pool_stride);
+    }
+
+    return address;
+}
+
+// The key this matrix is remembered under, and whether something named it.
+static bool gfx_interpolation_key(uint8_t parameters, const int32_t* addr, InterpolationMatrixKey* out) {
+    const auto it = frame_interpolation.registered.find((uintptr_t)addr);
+
+    if (it != frame_interpolation.registered.end() && it->second.generation == frame_interpolation.generation) {
+        *out = { it->second.owner, it->second.index, parameters };
+        return true;
+    }
+
+    *out = { 0, gfx_interpolation_address(addr), parameters };
+    return false;
+}
+
+// Whether these two are the same thing a tick apart, rather than an allocation
+// that came to hold something else or an object that teleported. Either way it
+// has to snap, or something unrelated sweeps across the screen.
+static bool gfx_interpolation_is_continuous(const InterpolationMatrix& previous,
+                                            const InterpolationMatrix& current) {
+    float translation_delta_sq = 0.f;
+
+    for (int row = 0; row < 4; row++) {
+        for (int column = 0; column < 4; column++) {
+            if (!std::isfinite(previous.m[row][column]) || !std::isfinite(current.m[row][column])) {
+                return false;
+            }
+
+            const float delta = current.m[row][column] - previous.m[row][column];
+
+            // The whole of the last row counts as the translation. For a
+            // modelview its fourth column is a constant 1 and this changes
+            // nothing, but the rooms are drawn with the camera in the
+            // projection, where that column is the eye's own distance along the
+            // view - thousands, moving by the player's speed every tick, which
+            // the element test below would refuse at a run.
+            if (row == 3) {
+                translation_delta_sq += delta * delta;
+            } else if (std::fabs(delta) > 6.f) {
+                return false;
+            }
+        }
+    }
+
+    return translation_delta_sq < 1000000.f;
+}
+
+static void gfx_interpolate_matrix(uint8_t parameters, const int32_t* addr, float matrix[4][4]) {
+    if (!frame_interpolation.enabled) {
+        return;
+    }
+
+    InterpolationMatrixKey key;
+    const bool registered = gfx_interpolation_key(parameters, addr, &key);
+
+    // A projection matrix is left alone unless something named it. The rooms
+    // carry the camera in the projection, not the modelview - bg.c loads
+    // camGetOrthogonalMtxL(), the view times the perspective, while the room's
+    // own modelview holds only its offset - so that one has to sweep or the
+    // world stands still between ticks while every model moves. The perspective
+    // the models are drawn under, and the menus' orthogonal matrices, are not
+    // named and keep their exact values.
+    if ((parameters & G_MTX_PROJECTION) && !registered) {
+        return;
+    }
+
+    auto it = frame_interpolation.matrices.find(key);
+
+    if (frame_interpolation.new_game_frame) {
+        if (it == frame_interpolation.matrices.end()) {
+            it = frame_interpolation.matrices.try_emplace(key).first;
+        }
+
+        InterpolationMatrixHistory& history = it->second;
+
+        if (history.current_generation != frame_interpolation.generation) {
+            if (history.current_generation != 0
+                    && history.current_generation + 1 == frame_interpolation.generation) {
+                history.previous = history.current;
+                history.previous_generation = history.current_generation;
+            } else {
+                history.previous_generation = 0;
+            }
+
+            history.current_generation = frame_interpolation.generation;
+        }
+
+        memcpy(history.current.m, matrix, sizeof(history.current.m));
+    }
+
+    if (it == frame_interpolation.matrices.end()) {
+        return;
+    }
+
+    const InterpolationMatrixHistory& history = it->second;
+
+    if (history.current_generation != frame_interpolation.generation
+            || history.previous_generation + 1 != history.current_generation
+            || !gfx_interpolation_is_continuous(history.previous, history.current)) {
+        return;
+    }
+
+    for (int row = 0; row < 4; row++) {
+        for (int column = 0; column < 4; column++) {
+            matrix[row][column] = history.previous.m[row][column]
+                    + (history.current.m[row][column] - history.previous.m[row][column])
+                    * frame_interpolation.alpha;
+        }
+    }
+}
+
+static void gfx_interpolate_lookat(int index) {
+    if (!frame_interpolation.enabled) {
+        return;
+    }
+
+    InterpolationLookAtHistory& history = frame_interpolation.lookat[index];
+
+    if (frame_interpolation.new_game_frame) {
+        if (history.current_generation != frame_interpolation.generation) {
+            if (history.current_generation != 0
+                    && history.current_generation + 1 == frame_interpolation.generation) {
+                memcpy(history.previous, history.current, sizeof(history.previous));
+                history.previous_generation = history.current_generation;
+            } else {
+                history.previous_generation = 0;
+            }
+
+            history.current_generation = frame_interpolation.generation;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            history.current[i] = rsp.lookat[index].dir[i];
+        }
+    }
+
+    if (history.current_generation != frame_interpolation.generation
+            || history.previous_generation + 1 != history.current_generation) {
+        return;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        const float swept = history.previous[i]
+                + (history.current[i] - history.previous[i]) * frame_interpolation.alpha;
+        const float clamped = swept < -128.f ? -128.f : (swept > 127.f ? 127.f : swept);
+
+        // Not renormalised: calculate_normal_dir() normalises what it is
+        // handed, which takes out the shortening a linear sweep leaves.
+        rsp.lookat[index].dir[i] = (int8_t)lrintf(clamped);
+    }
+}
+
+extern "C" void gfx_begin_game_frame_interpolation(void) {
+    frame_interpolation.generation++;
+
+    if (frame_interpolation.generation == 0) {
+        frame_interpolation.matrices.clear();
+        frame_interpolation.registered.clear();
+        frame_interpolation.generation = 1;
+    }
+}
+
+extern "C" void gfx_register_interpolation_matrix(const void* matrix, uint32_t index, const void* owner) {
+    if (!matrix || !owner) {
+        return;
+    }
+
+    frame_interpolation.registered[(uintptr_t)matrix] = {
+        (uintptr_t)owner,
+        index,
+        frame_interpolation.generation,
+    };
+}
+
+extern "C" void gfx_register_interpolation_model(const void* matrices, uint32_t count, const void* owner) {
+    const uintptr_t base = (uintptr_t)matrices;
+
+    for (uint32_t index = 0; index < count; index++) {
+        gfx_register_interpolation_matrix((const void*)(base + index * sizeof(InterpolationMatrix)), index, owner);
+    }
+}
+
+extern "C" void gfx_reset_frame_interpolation(void) {
+    frame_interpolation.enabled = false;
+    frame_interpolation.new_game_frame = false;
+    frame_interpolation.alpha = 0.f;
+    frame_interpolation.pool_base = 0;
+    frame_interpolation.pool_stride = 0;
+    frame_interpolation.generation = 0;
+    frame_interpolation.matrices.clear();
+    frame_interpolation.registered.clear();
+    memset(frame_interpolation.lookat, 0, sizeof(frame_interpolation.lookat));
+}
+
+extern "C" void gfx_set_frame_interpolation(bool enabled, bool new_game_frame, float alpha,
+                                            uintptr_t pool_base, uint32_t pool_stride) {
+    if (!enabled || !pool_base || !pool_stride) {
+        gfx_reset_frame_interpolation();
+        return;
+    }
+
+    if (frame_interpolation.pool_base != pool_base || frame_interpolation.pool_stride != pool_stride) {
+        frame_interpolation.matrices.clear();
+    }
+
+    frame_interpolation.enabled = true;
+    frame_interpolation.new_game_frame = new_game_frame;
+    frame_interpolation.alpha = alpha < 0.f ? 0.f : (alpha > 1.f ? 1.f : alpha);
+    frame_interpolation.pool_base = pool_base;
+    frame_interpolation.pool_stride = pool_stride;
+}
+
+#endif
+
 static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
     float matrix[4][4];
 
@@ -996,6 +1374,10 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
 #else
     // For a modified GBI where fixed point values are replaced with floats
     memcpy(matrix, addr, sizeof(matrix));
+#endif
+
+#ifdef PLATFORM_WEB
+    gfx_interpolate_matrix(parameters, addr, matrix);
 #endif
 
     if (parameters & G_MTX_PROJECTION) {
@@ -1719,7 +2101,13 @@ static void gfx_sp_movemem(uint8_t index, uint8_t offset, const void* data) {
             // I think this is only really used for guLookAtReflect
             index = !((index - G_MV_LOOKATY) / 2);
             rsp.lookat[index] = ((const Light *)data)->l;
+            // Decided on the tick's own value rather than the swept one, so a
+            // direction passing through zero cannot turn the pass on and off
+            // within a single tick.
             rsp.lookat_enabled = (index == 0) || (rsp.lookat[1].dir[0] || rsp.lookat[1].dir[1]);
+#ifdef PLATFORM_WEB
+            gfx_interpolate_lookat(index);
+#endif
             rsp.lights_changed = true;
             break;
         case G_MV_L0:
@@ -2567,12 +2955,6 @@ extern "C" void gfx_init(const GfxInitSettings *settings) {
         segmentPointers[i] = 0;
     }
 
-    if (tex_upload_buffer == nullptr) {
-        // We cap texture max to 8k, because why would you need more?
-        int max_tex_size = std::min(8192, gfx_rapi->get_max_texture_size());
-        tex_upload_buffer = (uint8_t*)malloc(max_tex_size * max_tex_size * 4);
-    }
-
     rsp.lookat[0].dir[0] = rsp.lookat[1].dir[1] = 0x7F;
     rsp.current_lookat_coeffs[0][0] = rsp.current_lookat_coeffs[1][1] = 1.f;
     rsp.lookat_enabled = true;
@@ -2583,6 +2965,10 @@ extern "C" void gfx_destroy(void) {
 
     // Texture cache and loaded textures store references to Resources which need to be unreferenced.
     gfx_texture_cache_clear();
+
+    free(tex_upload_buffer);
+    tex_upload_buffer = nullptr;
+    tex_upload_buffer_capacity = 0;
 }
 
 extern "C" struct GfxRenderingAPI* gfx_get_current_rendering_api(void) {

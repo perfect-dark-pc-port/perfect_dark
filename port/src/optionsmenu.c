@@ -947,14 +947,99 @@ static MenuItemHandlerResult menuhandlerGeMuzzleFlashes(s32 operation, struct me
 	return 0;
 }
 
-static MenuItemHandlerResult menuhandlerUncapTickrate(s32 operation, struct menuitem *item, union handlerdata *data)
+/**
+ * Frame Pacing: what the game does with the frames between its ticks.
+ *
+ * The three are one choice rather than separate switches, because each excludes
+ * the others:
+ *
+ * - Disabled leaves the game as it was authored: one tick and one frame
+ *   together, at the rate the ROM was built for.
+ * - Frame Interpolation keeps the tick at that rate and draws the tick before
+ *   and the current one swept together in between, so the picture moves at the
+ *   display's rate while the game does not. Web only, since the decoupled loop
+ *   it needs is paced by the browser's animation frame.
+ * - Uncapped takes the tick divisor away, so the game ticks once per frame at
+ *   whatever the display runs at. This is the old Uncap Tickrate checkbox.
+ */
+#define FRAMEPACING_DISABLED    0
+#define FRAMEPACING_INTERPOLATE 1
+#define FRAMEPACING_UNCAPPED    2
+
+static const u8 g_FramePacingModes[] = {
+	FRAMEPACING_DISABLED,
+#ifdef PLATFORM_WEB
+	FRAMEPACING_INTERPOLATE,
+#endif
+	FRAMEPACING_UNCAPPED,
+};
+
+// What Game.TickRateDivisor was before the row uncapped it, so leaving Uncapped
+// puts back what was chosen instead of flattening it to 1: the key takes 0 to
+// 10, and a 2 is a 30Hz tick.
+static s32 framePacingDivisor;
+
+static s32 framePacingGetMode(void)
 {
+#ifdef PLATFORM_WEB
+	if (videoGetDecoupledRendering()) {
+		return FRAMEPACING_INTERPOLATE;
+	}
+#endif
+
+	return g_TickRateDiv == 0 ? FRAMEPACING_UNCAPPED : FRAMEPACING_DISABLED;
+}
+
+static void framePacingSetMode(s32 mode)
+{
+	if (g_TickRateDiv != 0) {
+		framePacingDivisor = g_TickRateDiv;
+	}
+
+#ifdef PLATFORM_WEB
+	// Interpolation ticks at the authored rate and replays between, so it wants
+	// the divisor the same way Disabled does.
+	videoSetDecoupledRendering(mode == FRAMEPACING_INTERPOLATE);
+#endif
+
+	g_TickRateDiv = mode == FRAMEPACING_UNCAPPED ? 0 : (framePacingDivisor > 0 ? framePacingDivisor : 1);
+}
+
+static MenuItemHandlerResult menuhandlerFramePacing(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	s32 i;
+
 	switch (operation) {
-	case MENUOP_GET:
-		return (g_TickRateDiv == 0);
-	case MENUOP_SET:
-		g_TickRateDiv = !data->checkbox.value;
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(g_FramePacingModes);
 		break;
+	case MENUOP_GETOPTIONTEXT:
+		if (data->dropdown.value >= ARRAYCOUNT(g_FramePacingModes)) {
+			return (intptr_t)"Disabled";
+		}
+
+		switch (g_FramePacingModes[data->dropdown.value]) {
+		case FRAMEPACING_INTERPOLATE:
+			return (intptr_t)"Frame Interpolation";
+		case FRAMEPACING_UNCAPPED:
+			return (intptr_t)"Uncapped";
+		default:
+			return (intptr_t)"Disabled";
+		}
+	case MENUOP_SET:
+		if (data->dropdown.value < ARRAYCOUNT(g_FramePacingModes)) {
+			framePacingSetMode(g_FramePacingModes[data->dropdown.value]);
+		}
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		data->dropdown.value = 0;
+
+		for (i = 0; i < (s32)ARRAYCOUNT(g_FramePacingModes); i++) {
+			if (g_FramePacingModes[i] == framePacingGetMode()) {
+				data->dropdown.value = i;
+				break;
+			}
+		}
 	}
 
 	return 0;
@@ -1102,12 +1187,12 @@ struct menuitem g_ExtendedVideoMenuItems[] = {
 		menuhandlerFramerateLimit,
 	},
 	{
-		MENUITEMTYPE_CHECKBOX,
+		MENUITEMTYPE_DROPDOWN,
 		0,
 		MENUITEMFLAG_LITERAL_TEXT,
-		(uintptr_t)"Uncap Tickrate",
+		(uintptr_t)"Frame Pacing",
 		0,
-		menuhandlerUncapTickrate,
+		menuhandlerFramePacing,
 	},
 	{
 		MENUITEMTYPE_CHECKBOX,

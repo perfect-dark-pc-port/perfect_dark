@@ -5,6 +5,10 @@
 #include "lib/mtx.h"
 #include "data.h"
 #include "types.h"
+#ifdef PLATFORM_WEB
+#include "game/camera.h"
+#include "video.h"
+#endif
 
 /**
  * Room matrices
@@ -175,6 +179,28 @@ s32 roomTouchMtx(s32 roomnum)
 Gfx *roomApplyMtx(Gfx *gdl, s32 roomnum)
 {
 	s32 index = roomTouchMtx(roomnum);
+
+#ifdef PLATFORM_WEB
+	// Frame interpolation matches a matrix across ticks by where it lives, and
+	// neither of the two a room is drawn under can be found that way:
+	//
+	// - The room's own matrix lives in an LRU cache slot, so its address names
+	//   the slot and not the room.
+	// - The camera is in the projection here rather than the modelview. The
+	//   room's matrix holds nothing but the room's offset, and bg.c loads
+	//   camGetOrthogonalMtxL() - the view times the perspective - as the
+	//   projection.
+	//
+	// Both are named for the room, and for the room the world is drawn relative
+	// to, so rebasing on a new room snaps rather than sliding the whole world
+	// over a tick.
+	{
+		const u32 base = (u32)g_RoomMtxBaseRooms[index];
+
+		videoRegisterInterpolationMatrix(&g_RoomMtxMatrices[index], base, &g_Rooms[roomnum]);
+		videoRegisterInterpolationMatrix(camGetOrthogonalMtxL(), base, g_Vars.currentplayer);
+	}
+#endif
 
 	gSPMatrix(gdl++, &g_RoomMtxMatrices[index], G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 

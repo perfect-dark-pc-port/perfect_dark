@@ -4,6 +4,7 @@
 *.exe
 pd.*.z64
 build
+build-web
 .flatpak-builder
 extracted
 src/assets/*/*.bin

@@ -3,6 +3,7 @@
 
 #include <PR/ultratypes.h>
 #include <PR/gbi.h>
+#include "platform.h"
 
 // maximum framerate; if the game runs faster than this, things will break
 #if PAL
@@ -19,6 +20,15 @@ typedef struct {
 s32 videoInit(void);
 void videoStartFrame(void);
 void videoSubmitCommands(Gfx *cmds);
+#ifdef PLATFORM_WEB
+s32 videoGetDecoupledRendering(void);
+void videoSetDecoupledRendering(s32 enabled);
+void videoBeginGameFrameInterpolation(void);
+void videoRegisterInterpolationModel(const void *matrices, u32 count, const void *owner);
+void videoRegisterInterpolationMatrix(const void *matrix, u32 index, const void *owner);
+s32 videoReplayLastFrame(f32 alpha);
+void videoDiscardReplayFrame(void);
+#endif
 void videoClearScreen(void);
 void videoEndFrame(void);
 

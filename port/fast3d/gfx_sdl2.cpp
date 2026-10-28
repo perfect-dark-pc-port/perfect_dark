@@ -1,10 +1,15 @@
 #include <stdio.h>
+#include <string.h>
 #include <SDL.h>
 #include <unistd.h>
 #include <time.h>
 
 #include "platform.h"
 #include "system.h"
+
+#ifdef PLATFORM_WEB
+#include <emscripten/html5.h>
+#endif
 
 #include "gfx_window_manager_api.h"
 #include "gfx_screen_config.h"
@@ -23,7 +28,34 @@ static bool maximized_state;
 static bool is_running = true;
 static void (*on_fullscreen_changed_callback)(bool is_now_fullscreen);
 
+#ifdef PLATFORM_WEB
+// The browser's compositor owns presentation pacing. Busy-waiting for a
+// desktop swap interval would block its event loop.
+static int target_fps = 0;
+
+EM_JS(s32, gfx_sdl_web_get_canvas_size, (s32 *width, s32 *height, s32 consume_resize), {
+    var fittedWidth = Module['pdCanvasWidth'] | 0;
+    var fittedHeight = Module['pdCanvasHeight'] | 0;
+
+    if (fittedWidth < 1 || fittedHeight < 1) {
+        console.error('Browser canvas size was not initialised by the web shell');
+        return -1;
+    }
+
+    HEAP32[width >> 2] = fittedWidth;
+    HEAP32[height >> 2] = fittedHeight;
+
+    var pending = Module['pdCanvasResizePending'] ? 1 : 0;
+    if (consume_resize) Module['pdCanvasResizePending'] = false;
+    return pending;
+});
+
+EM_JS(void, gfx_sdl_web_request_canvas_resize, (), {
+    Module['pdCanvasResizePending'] = true;
+});
+#else
 static int target_fps = 120; // above 60 since vsync is enabled by default
+#endif
 static uint64_t previous_time;
 static uint64_t qpc_freq;
 
@@ -35,6 +67,13 @@ static int32_t gfx_sdl_get_maximized_state(void) {
 }
 
 static int32_t gfx_sdl_get_fullscreen_state(void) {
+#ifdef PLATFORM_WEB
+    EmscriptenFullscreenChangeEvent status;
+
+    if (emscripten_get_fullscreen_status(&status) == EMSCRIPTEN_RESULT_SUCCESS) {
+        fullscreen_state = status.isFullscreen && strcmp(status.id, "canvas") == 0;
+    }
+#endif
     return (int32_t)fullscreen_state;
 }
 
@@ -56,10 +95,29 @@ static void gfx_sdl_set_fullscreen_flag(int32_t mode) {
 static void set_fullscreen(bool on, bool call_callback) {
     fullscreen_state = on;
     SDL_SetWindowFullscreen(wnd, on ? fullscreen_flag : 0);
+#ifdef PLATFORM_WEB
+    gfx_sdl_web_request_canvas_resize();
+#endif
     if (call_callback && on_fullscreen_changed_callback) {
         on_fullscreen_changed_callback(on);
     }
 }
+
+#ifdef PLATFORM_WEB
+static EM_BOOL gfx_sdl_web_keydown(int event_type, const EmscriptenKeyboardEvent *event, void *) {
+    const bool is_f11 = strcmp(event->code, "F11") == 0 || strcmp(event->key, "F11") == 0;
+    const bool is_alt_enter = event->altKey && strcmp(event->code, "Enter") == 0;
+
+    if (event_type == EMSCRIPTEN_EVENT_KEYDOWN && !event->repeat && (is_f11 || is_alt_enter)) {
+        // Browser fullscreen must be requested during the key gesture itself.
+        // Polling the corresponding SDL event on the next frame is too late.
+        set_fullscreen(!gfx_sdl_get_fullscreen_state(), true);
+        return EM_TRUE;
+    }
+
+    return EM_FALSE;
+}
+#endif
 
 static void set_maximize_window(bool on) {
 	maximized_state = on;
@@ -81,6 +139,12 @@ static void gfx_sdl_get_active_window_refresh_rate(uint32_t* refresh_rate) {
 static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     window_width = set->width;
     window_height = set->height;
+
+#ifdef PLATFORM_WEB
+    if (gfx_sdl_web_get_canvas_size(&window_width, &window_height, false) < 0) {
+        sysFatalError("Browser canvas size was not initialised by the web shell");
+    }
+#endif
 
 #ifdef SDL_HINT_VIDEO_HIGHDPI_DISABLED
     if (!set->allow_hidpi) {
@@ -155,6 +219,10 @@ static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     };
 
     u32 verstart = 1;
+#ifdef PLATFORM_WEB
+    // WebGL 2 exposes the OpenGL ES 3.0 profile.
+    verstart = 4;
+#endif
     const u32 verend = sizeof(glver) / sizeof(*glver);
     const char *verstr = sysArgGetString("--gl-version");
     if (verstr && *verstr) {
@@ -206,6 +274,15 @@ static void gfx_sdl_init(const struct GfxWindowInitSettings *set) {
     SDL_GL_SetSwapInterval(1);
 
     SDL_ShowWindow(wnd);
+
+#ifdef PLATFORM_WEB
+    const EMSCRIPTEN_RESULT key_callback_result = emscripten_set_keydown_callback(
+            EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, true, gfx_sdl_web_keydown);
+
+    if (key_callback_result != EMSCRIPTEN_RESULT_SUCCESS) {
+        sysLogPrintf(LOG_WARNING, "could not register browser fullscreen shortcut: %d", key_callback_result);
+    }
+#endif
 
     qpc_freq = SDL_GetPerformanceFrequency();
 }
@@ -263,6 +340,12 @@ static void gfx_sdl_get_centered_positions(int32_t width, int32_t height, int32_
 }
 
 static void gfx_sdl_set_closest_resolution(int32_t width, int32_t height, bool should_center) {
+#ifdef PLATFORM_WEB
+    (void)width;
+    (void)height;
+    (void)should_center;
+    gfx_sdl_web_request_canvas_resize();
+#else
     const SDL_DisplayMode mode = {.w = width, .h = height};
     const int disp_idx = SDL_GetWindowDisplayIndex(wnd);
     SDL_DisplayMode closest = {};
@@ -276,11 +359,20 @@ static void gfx_sdl_set_closest_resolution(int32_t width, int32_t height, bool s
             SDL_SetWindowPosition(wnd, posX, posY);
         }
     }
+#endif
 }
 
 static void gfx_sdl_set_dimensions(uint32_t width, uint32_t height, int32_t posX, int32_t posY) {
+#ifdef PLATFORM_WEB
+    (void)width;
+    (void)height;
+    (void)posX;
+    (void)posY;
+    gfx_sdl_web_request_canvas_resize();
+#else
     SDL_SetWindowSize(wnd, width, height);
     SDL_SetWindowPosition(wnd, posX, posY);
+#endif
 }
 
 static void gfx_sdl_get_dimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) {
@@ -289,14 +381,34 @@ static void gfx_sdl_get_dimensions(uint32_t* width, uint32_t* height, int32_t* p
 }
 
 static void gfx_sdl_handle_events(void) {
+#ifdef PLATFORM_WEB
+    s32 canvas_width = 0;
+    s32 canvas_height = 0;
+    const s32 canvas_size = gfx_sdl_web_get_canvas_size(&canvas_width, &canvas_height, true);
+
+    if (canvas_size < 0) {
+        sysFatalError("Browser canvas size was not initialised by the web shell");
+    } else if (canvas_size > 0) {
+        s32 current_width = 0;
+        s32 current_height = 0;
+        SDL_GetWindowSize(wnd, &current_width, &current_height);
+
+        if (current_width != canvas_width || current_height != canvas_height) {
+            SDL_SetWindowSize(wnd, canvas_width, canvas_height);
+        }
+    }
+#endif
+
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
             case SDL_KEYDOWN:
+#ifndef PLATFORM_WEB
                 if (event.key.keysym.sym == SDLK_RETURN && (event.key.keysym.mod & KMOD_ALT)) {
                     // alt-enter received, switch fullscreen state
                     set_fullscreen(!fullscreen_state, true);
                 }
+#endif
                 break;
             case SDL_WINDOWEVENT:
                 if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {

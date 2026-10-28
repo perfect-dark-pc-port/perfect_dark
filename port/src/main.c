@@ -18,6 +18,10 @@
 #include "system.h"
 #include "utils.h"
 
+#ifdef PLATFORM_WEB
+#include <emscripten.h>
+#endif
+
 u32 g_OsMemSize = 0;
 s32 g_OsMemSizeMb = 16;
 u8 g_Is4Mb = 0;
@@ -83,6 +87,33 @@ static void gameInit(void)
 	}
 }
 
+#ifdef PLATFORM_WEB
+static s32 configReady = false;
+
+/**
+ * Write pd.ini out on demand. A browser tab is closed rather than quit, so
+ * cleanup() is never reached; the shell calls this instead, and copies the
+ * result out of the filesystem into local storage.
+ *
+ * Returns -1 before config has been read, 0 if the write failed, 1 on success.
+ */
+EMSCRIPTEN_KEEPALIVE s32 webSaveConfig(void)
+{
+	if (!configReady) {
+		return -1;
+	}
+
+	inputSaveBinds();
+
+	if (!configSave(CONFIG_PATH)) {
+		sysLogPrintf(LOG_ERROR, "could not save %s", CONFIG_PATH);
+		return 0;
+	}
+
+	return 1;
+}
+#endif
+
 static void cleanup(void)
 {
 	sysLogPrintf(LOG_NOTE, "shutdown");
@@ -107,6 +138,11 @@ int main(int argc, const char **argv)
 	videoInit();
 	inputInit();
 	audioInit();
+
+#ifdef PLATFORM_WEB
+	configReady = true;
+#endif
+
 	romdataInit();
 
 	g_ValidGbcRomFound = romdataCheckGbcRom();

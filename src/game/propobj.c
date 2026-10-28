@@ -78,7 +78,11 @@
 #include "types.h"
 #include "string.h"
 
+#ifdef PLATFORM_WEB
+void rng2SetSeed(u64 seed);
+#else
 void rng2SetSeed(u32 seed);
+#endif
 
 struct weaponobj *g_Proxies[30];
 f32 g_GasReleaseTimerMax240;

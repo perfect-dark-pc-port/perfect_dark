@@ -17,6 +17,9 @@
 #include "lib/model.h"
 #include "data.h"
 #include "types.h"
+#ifdef PLATFORM_WEB
+#include "video.h"
+#endif
 
 /**
  * -- Model Definitions --
@@ -3504,6 +3507,16 @@ void modelRender(struct modelrenderdata *renderdata, struct model *model)
 	u32 type;
 	struct modelnode *node = model->definition->rootnode;
 
+#ifdef PLATFORM_WEB
+	// A chr or a prop keeps its model address across ticks while its matrices
+	// move between the two graphics pools, so it can name them for frame
+	// interpolation. A transient model owns nothing and is left to be matched
+	// by where it was allocated.
+	if (model->chr != NULL) {
+		videoRegisterInterpolationModel(model->matrices, model->definition->nummatrices, model);
+	}
+#endif
+
 	gSPSegment(renderdata->gdl++, SPSEGMENT_MODEL_MTX, osVirtualToPhysical(model->matrices));
 
 	while (node) {
@@ -4192,6 +4205,12 @@ void modelInit(struct model *model, struct modeldef *modeldef, u32 *rwdatas, boo
 	model->scale = 1;
 	model->attachedtomodel = NULL;
 	model->attachedtonode = NULL;
+#ifdef PLATFORM_WEB
+	// The owner union is assigned after modelInit() by whatever owns the model.
+	// Clearing it here keeps a transient model out of the interpolation
+	// registry rather than leaving it pointing at whatever was here before.
+	model->chr = NULL;
+#endif
 
 	node = modeldef->rootnode;
 

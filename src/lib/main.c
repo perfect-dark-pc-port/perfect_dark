@@ -72,7 +72,13 @@
 
 // mainLoop calls rngSetSeed with a u32 argument,
 // but the function takes a u64 so an incorrect declaration is needed.
+// WebAssembly traps on a call whose signature does not match the callee,
+// so that declaration has to be honest there.
+#ifdef PLATFORM_WEB
+void rngSetSeed(u64 seed);
+#else
 void rngSetSeed(u32 seed);
+#endif
 
 bool var8005d9b0 = false;
 s32 g_StageNum = STAGE_TITLE;

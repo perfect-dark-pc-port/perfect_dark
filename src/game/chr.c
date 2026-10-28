@@ -51,7 +51,11 @@
 #include "video.h"
 #endif
 
+#ifdef PLATFORM_WEB
+void rng2SetSeed(u64 seed);
+#else
 void rng2SetSeed(u32 seed);
+#endif
 
 #ifdef PLATFORM_N64
 void *var8009ccc0[20];

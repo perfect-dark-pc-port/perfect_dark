@@ -14,6 +14,10 @@
 #include "platform.h"
 #include "system.h"
 
+#ifdef PLATFORM_WEB
+#include <emscripten.h>
+#endif
+
 #ifdef PLATFORM_WIN32
 
 #include <windows.h>
@@ -300,7 +304,12 @@ void sysMemFree(void *ptr)
 
 void sysSleep(const s64 hns)
 {
-#ifdef PLATFORM_WIN32
+#ifdef PLATFORM_WEB
+	// The browser's event loop has to be given the thread back regularly, so
+	// even a zero sleep yields. Asyncify makes that return here afterwards.
+	// One millisecond is the shortest emscripten_sleep can schedule.
+	emscripten_sleep(hns > 0 ? (int)((hns + 9999) / 10000) : 0);
+#elif defined(PLATFORM_WIN32)
 	static LARGE_INTEGER li;
 	li.QuadPart = -hns;
 	SetWaitableTimer(timer, &li, 0, NULL, NULL, FALSE);
@@ -310,6 +319,12 @@ void sysSleep(const s64 hns)
 	nanosleep(&spec, NULL);
 #endif
 }
+
+#ifdef PLATFORM_WEB
+EM_ASYNC_JS(void, sysWaitForAnimationFrame, (), {
+	await new Promise(resolve => requestAnimationFrame(resolve));
+});
+#endif
 
 void sysCpuRelax(void)
 {

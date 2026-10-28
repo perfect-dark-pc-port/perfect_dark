@@ -2,7 +2,9 @@
 #define _IN_PLATFORM_H
 
 // detect OS
-#if defined(_WIN32)
+#if defined(__EMSCRIPTEN__)
+	#define PLATFORM_WEB 1
+#elif defined(_WIN32)
 	#define PLATFORM_WIN32 1
 #elif defined(__SWITCH__)
 	#define PLATFORM_POSIX 1
@@ -20,7 +22,9 @@
 #endif
 
 // detect arch
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(__wasm32__)
+	#define PLATFORM_WASM32 1
+#elif defined(__x86_64__) || defined(_M_X64)
 	#define PLATFORM_X86_64 1
 	#define PLATFORM_64BIT 1
 #elif defined(__i386__) || defined(_X86_) || defined(_M_IX86)

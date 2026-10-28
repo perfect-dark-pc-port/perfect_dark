@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>Perfect Dark</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body {
+      align-items: center;
+      background: #080b10;
+      color: #e9eef7;
+      display: flex;
+      justify-content: center;
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+    #launcher {
+      background: #111722;
+      border: 2px dashed #63728a;
+      border-radius: 12px;
+      max-width: 44rem;
+      padding: 2.25rem;
+      text-align: center;
+      width: calc(100% - 2rem);
+    }
+    #launcher.drag { background: #15233a; border-color: #8db9ff; }
+    #launcher.error { border-color: #ef6d78; }
+    #status { min-height: 1.5em; }
+    .actions { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; margin-top: 1rem; }
+    button {
+      background: #d7e6ff;
+      border: 0;
+      border-radius: 6px;
+      color: #09101a;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      padding: .75rem 1rem;
+    }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    small { color: #aeb9c9; display: block; margin-top: 1rem; }
+    a { color: #8db9ff; }
+    .links { display: flex; flex-wrap: wrap; gap: .25rem 1.25rem; justify-content: center; }
+    canvas { border: 0; display: none; max-height: 100vh; max-width: 100vw; }
+    canvas:focus { outline: none; }
+  </style>
+</head>
+<body>
+  <main id="launcher">
+    <h1>Perfect Dark</h1>
+    <p>Drop your US Rev 1 <strong>.z64 ROM</strong> (or a ZIP containing it) and, optionally, a <strong>pd.ini</strong>.</p>
+    <p id="status">You can drop the files together or add them one at a time.</p>
+    <div class="actions">
+      <button id="choose" type="button">Choose ROM / INI</button>
+      <button id="save-ini" type="button" disabled>Save pd.ini</button>
+      <button id="start" type="button" disabled>Start Game</button>
+    </div>
+    <input id="files" type="file" accept=".z64,.zip,.ini,application/octet-stream,text/plain,application/zip" multiple hidden>
+    <small>pd.ini and your saves persist in this browser and the INI can be downloaded here. The ROM stays in memory for this tab only and is never uploaded.</small>
+  </main>
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <script>
+    const launcher = document.getElementById('launcher');
+    const status = document.getElementById('status');
+    const chooser = document.getElementById('files');
+    const saveIniButton = document.getElementById('save-ini');
+    const startButton = document.getElementById('start');
+    const canvas = document.getElementById('canvas');
+    const romPath = '/data/pd.ntsc-final.z64';
+    const iniPath = '/save/pd.ini';
+    const iniStorageKey = 'perfect-dark:pd.ini';
+    const audioSampleRate = 22020;
+    const canvasAspectRatios = [[16, 9], [16, 10], [3, 2], [4, 3], [21, 9], [32, 9]];
+    let finishRomLoad;
+    let romReady = false;
+    let iniImported = false;
+    let launching = false;
+    let lastRuntimeIniSave = 0;
+    let resolveFilesystem;
+    let rejectFilesystem;
+    const filesystemReady = new Promise((resolve, reject) => {
+      resolveFilesystem = resolve;
+      rejectFilesystem = reject;
+    });
+
+    function setStatus(message, error = false) {
+      status.textContent = message;
+      launcher.classList.toggle('error', error);
+    }
+
+    function fitCanvasToViewport() {
+      const viewportWidth = Math.max(1, window.innerWidth | 0);
+      const viewportHeight = Math.max(1, window.innerHeight | 0);
+      const measuredAspect = viewportWidth / viewportHeight;
+      let selected = canvasAspectRatios[0];
+      let smallestDifference = Infinity;
+
+      for (const ratio of canvasAspectRatios) {
+        const difference = Math.abs(measuredAspect - ratio[0] / ratio[1]);
+        if (difference < smallestDifference) {
+          selected = ratio;
+          smallestDifference = difference;
+        }
+      }
+
+      let width = viewportWidth;
+      let height = Math.floor(width * selected[1] / selected[0]);
+
+      if (height > viewportHeight) {
+        height = viewportHeight;
+        width = Math.floor(height * selected[0] / selected[1]);
+      }
+
+      width = Math.max(1, width);
+      height = Math.max(1, height);
+      canvas.style.setProperty('width', `${width}px`, 'important');
+      canvas.style.setProperty('height', `${height}px`, 'important');
+      Module.pdCanvasWidth = width;
+      Module.pdCanvasHeight = height;
+      Module.pdCanvasResizePending = true;
+    }
+
+    function updateIniButton() {
+      saveIniButton.disabled = launching || !FS.analyzePath(iniPath).exists;
+    }
+
+    function persistIniToLocalStorage() {
+      if (!FS.analyzePath(iniPath).exists) {
+        updateIniButton();
+        return false;
+      }
+
+      const contents = FS.readFile(iniPath, { encoding: 'utf8' });
+      localStorage.setItem(iniStorageKey, contents);
+      updateIniButton();
+      return true;
+    }
+
+    function restoreIniFromLocalStorage() {
+      const contents = localStorage.getItem(iniStorageKey);
+
+      if (contents !== null) {
+        const size = new TextEncoder().encode(contents).length;
+        if (size > 1024 * 1024) {
+          throw new Error(`stored pd.ini is ${formatMiB(size)} MiB; expected no more than 1 MiB`);
+        }
+        FS.writeFile(iniPath, contents);
+      } else if (FS.analyzePath(iniPath).exists) {
+        // Preserve an INI written by an earlier browser build that used only
+        // IDBFS, then make localStorage authoritative on subsequent loads.
+        persistIniToLocalStorage();
+      }
+
+      updateIniButton();
+    }
+
+    function syncPersistentFiles() {
+      persistIniToLocalStorage();
+      return new Promise((resolve, reject) => {
+        FS.syncfs(false, error => error ? reject(error) : resolve());
+      });
+    }
+
+    function saveRuntimeIni() {
+      if (!launching || typeof Module._webSaveConfig !== 'function') return;
+
+      const now = Date.now();
+      if (now - lastRuntimeIniSave < 1000) return;
+
+      try {
+        const result = Module._webSaveConfig();
+        if (result < 0) return;
+        if (!result) throw new Error('the game could not write /save/pd.ini');
+        persistIniToLocalStorage();
+        lastRuntimeIniSave = now;
+      } catch (error) {
+        console.error(`Could not persist pd.ini to localStorage: ${error.message || error}`);
+      }
+    }
+
+    async function downloadIni() {
+      try {
+        await filesystemReady;
+        if (!FS.analyzePath(iniPath).exists) {
+          throw new Error('no pd.ini is stored yet; import one or start the game once first');
+        }
+
+        persistIniToLocalStorage();
+        const bytes = FS.readFile(iniPath);
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'text/plain;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'pd.ini';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        setStatus(romReady
+          ? 'pd.ini saved. ROM ready; click Start Game.'
+          : 'pd.ini saved. Add your US Rev 1 ROM to continue.');
+      } catch (error) {
+        setStatus(`Could not save pd.ini: ${error.message || error}`, true);
+      }
+    }
+
+    function formatMiB(bytes) {
+      return (bytes / 1048576).toFixed(2);
+    }
+
+    function safeZipEntryName(name) {
+      const normalized = name.replaceAll('\\', '/');
+      const parts = normalized.split('/');
+
+      if (!normalized || normalized.includes(String.fromCharCode(0)) || normalized.startsWith('/')
+          || /^[A-Za-z]:/.test(normalized)
+          || parts.some((part, index) => (part === '' && index < parts.length - 1)
+            || part === '.' || part === '..')) {
+        throw new Error(`unsafe path in ZIP: ${JSON.stringify(name)}`);
+      }
+
+      return normalized;
+    }
+
+    async function readZipDirectory(file) {
+      if (file.size < 22) throw new Error(`${file.name} has no ZIP central directory`);
+
+      const tailOffset = Math.max(0, file.size - 22 - 65535);
+      const tail = new Uint8Array(await file.slice(tailOffset).arrayBuffer());
+      const view = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+      const minimumEndOffset = Math.max(0, tail.length - 22 - 65535);
+      let endOffset = -1;
+
+      for (let offset = tail.length - 22; offset >= minimumEndOffset; offset--) {
+        if (view.getUint32(offset, true) === 0x06054b50
+            && offset + 22 + view.getUint16(offset + 20, true) === tail.length) {
+          endOffset = offset;
+          break;
+        }
+      }
+
+      if (endOffset < 0) throw new Error(`${file.name} has no ZIP central directory`);
+
+      const disk = view.getUint16(endOffset + 4, true);
+      const directoryDisk = view.getUint16(endOffset + 6, true);
+      const diskEntries = view.getUint16(endOffset + 8, true);
+      const entryCount = view.getUint16(endOffset + 10, true);
+      const directorySize = view.getUint32(endOffset + 12, true);
+      const directoryOffset = view.getUint32(endOffset + 16, true);
+
+      if (disk !== 0 || directoryDisk !== 0 || diskEntries !== entryCount) {
+        throw new Error('multi-part ZIP files are not supported');
+      }
+      if (entryCount === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) {
+        throw new Error('ZIP64 archives are not supported');
+      }
+      if (directoryOffset + directorySize > tailOffset + endOffset
+          || directoryOffset + directorySize > file.size) {
+        throw new Error('the ZIP central directory is damaged');
+      }
+
+      const directory = new Uint8Array(await file
+        .slice(directoryOffset, directoryOffset + directorySize).arrayBuffer());
+      const directoryView = new DataView(directory.buffer, directory.byteOffset, directory.byteLength);
+      const decoder = new TextDecoder();
+      const entries = [];
+      let offset = 0;
+
+      for (let index = 0; index < entryCount; index++) {
+        if (offset + 46 > directory.length || directoryView.getUint32(offset, true) !== 0x02014b50) {
+          throw new Error('the ZIP central directory is damaged');
+        }
+
+        const nameLength = directoryView.getUint16(offset + 28, true);
+        const extraLength = directoryView.getUint16(offset + 30, true);
+        const commentLength = directoryView.getUint16(offset + 32, true);
+        const nextOffset = offset + 46 + nameLength + extraLength + commentLength;
+        if (nameLength === 0 || nextOffset > directory.length) {
+          throw new Error('the ZIP central directory is damaged');
+        }
+
+        const name = safeZipEntryName(decoder.decode(
+          directory.subarray(offset + 46, offset + 46 + nameLength)));
+        const entry = {
+          name,
+          flags: directoryView.getUint16(offset + 8, true),
+          method: directoryView.getUint16(offset + 10, true),
+          compressedSize: directoryView.getUint32(offset + 20, true),
+          size: directoryView.getUint32(offset + 24, true),
+          localOffset: directoryView.getUint32(offset + 42, true)
+        };
+
+        if (entry.compressedSize === 0xffffffff || entry.size === 0xffffffff
+            || entry.localOffset === 0xffffffff) {
+          throw new Error('ZIP64 archives are not supported');
+        }
+
+        entries.push(entry);
+        offset = nextOffset;
+      }
+
+      return entries;
+    }
+
+    async function extractZipEntry(file, entry) {
+      if (entry.flags & 1) throw new Error(`encrypted ZIP entry: ${entry.name}`);
+      if (entry.method !== 0 && entry.method !== 8) {
+        throw new Error(`unsupported ZIP compression method ${entry.method}: ${entry.name}`);
+      }
+      if (entry.localOffset + 30 > file.size) throw new Error(`damaged ZIP entry: ${entry.name}`);
+
+      const header = new Uint8Array(await file
+        .slice(entry.localOffset, entry.localOffset + 30).arrayBuffer());
+      const view = new DataView(header.buffer, header.byteOffset, header.byteLength);
+      if (view.getUint32(0, true) !== 0x04034b50) {
+        throw new Error(`damaged ZIP entry: ${entry.name}`);
+      }
+
+      const nameLength = view.getUint16(26, true);
+      const extraLength = view.getUint16(28, true);
+      const dataOffset = entry.localOffset + 30 + nameLength + extraLength;
+      if (dataOffset + entry.compressedSize > file.size) {
+        throw new Error(`incomplete ZIP entry: ${entry.name}`);
+      }
+
+      const compressed = file.slice(dataOffset, dataOffset + entry.compressedSize);
+      let bytes;
+
+      if (entry.method === 0) {
+        bytes = new Uint8Array(await compressed.arrayBuffer());
+      } else {
+        if (typeof DecompressionStream === 'undefined') {
+          throw new Error('this browser cannot extract ZIP files');
+        }
+
+        try {
+          const stream = compressed.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+          bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+        } catch (error) {
+          throw new Error(`could not extract ${entry.name}: ${error.message || error}`);
+        }
+      }
+
+      if (bytes.length !== entry.size) {
+        throw new Error(`wrong extracted size for ${entry.name}: expected ${entry.size}, got ${bytes.length}`);
+      }
+
+      return bytes;
+    }
+
+    function showReadyStatus() {
+      startButton.disabled = !romReady;
+
+      if (romReady) {
+        setStatus(`ROM ready.${iniImported ? ' INI imported and saved.' : ''} Click Start Game.`);
+      } else if (iniImported) {
+        setStatus('INI imported and saved. Add your US Rev 1 ROM to continue.');
+      } else {
+        setStatus('Add your US Rev 1 ROM to continue.');
+      }
+    }
+
+    async function inspectFiles(files) {
+      const selected = { ini: [], rom: [] };
+
+      for (const file of files) {
+        const lower = file.name.toLowerCase();
+
+        if (lower.endsWith('.ini')) {
+          selected.ini.push(file);
+        } else if (lower.endsWith('.zip')) {
+          setStatus(`Inspecting ${file.name}...`);
+          const entries = await readZipDirectory(file);
+          const romEntries = entries.filter(entry => entry.name.toLowerCase().endsWith('.z64'));
+
+          if (romEntries.length > 1) throw new Error(`${file.name} contains more than one .z64 ROM`);
+          if (romEntries.length === 0) throw new Error(`${file.name} contains no .z64 ROM`);
+          selected.rom.push({ file, entry: romEntries[0] });
+        } else if (lower.endsWith('.z64') || file.size === 32 * 1024 * 1024) {
+          selected.rom.push({ file });
+        } else {
+          throw new Error(`unsupported file: ${file.name}`);
+        }
+      }
+
+      if (selected.ini.length > 1 || selected.rom.length > 1) {
+        throw new Error('drop at most one ROM and one INI');
+      }
+
+      return selected;
+    }
+
+    async function importIni(file) {
+      if (file.size > 1024 * 1024) {
+        throw new Error(`the INI is ${formatMiB(file.size)} MiB; pd.ini must be no larger than 1 MiB`);
+      }
+
+      FS.writeFile(iniPath, new Uint8Array(await file.arrayBuffer()), { canOwn: true });
+      await syncPersistentFiles();
+      iniImported = true;
+    }
+
+    async function importRom(source) {
+      const bytes = source.entry
+        ? await extractZipEntry(source.file, source.entry)
+        : new Uint8Array(await source.file.arrayBuffer());
+
+      if (bytes.length !== 32 * 1024 * 1024) {
+        throw new Error(`wrong ROM size: expected 32 MiB, got ${formatMiB(bytes.length)} MiB`);
+      }
+      const id = String.fromCharCode(...bytes.subarray(0x3b, 0x3f));
+      if (id !== 'NPDE') {
+        throw new Error(`wrong ROM header: expected NPDE, got ${JSON.stringify(id)}`);
+      }
+
+      FS.writeFile(romPath, bytes, { canOwn: true });
+      romReady = true;
+    }
+
+    async function importFiles(fileList) {
+      if (launching) return;
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+
+      setStatus('Reading files...');
+      try {
+        await filesystemReady;
+        const selected = await inspectFiles(files);
+
+        if (selected.ini[0]) await importIni(selected.ini[0]);
+        if (selected.rom[0]) await importRom(selected.rom[0]);
+
+        showReadyStatus();
+      } catch (error) {
+        setStatus(`Could not import the files: ${error.message}`, true);
+      } finally {
+        chooser.value = '';
+      }
+    }
+
+    function prepareAudio() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+      if (!AudioContextClass) throw new Error('this browser does not provide the Web Audio API');
+
+      if (!Module.pdAudioContext || Module.pdAudioContext.state === 'closed') {
+        // Match the game's mixer rate so its short queued buffers stay sample
+        // continuous. The browser can then resample the context's output to
+        // the hardware rate as one uninterrupted stream.
+        Module.pdAudioContext = new AudioContextClass({ sampleRate: audioSampleRate });
+      }
+
+      if (Module.pdAudioContext.sampleRate !== audioSampleRate) {
+        throw new Error(`Web Audio opened at ${Module.pdAudioContext.sampleRate} Hz; expected ${audioSampleRate} Hz`);
+      }
+
+      if (Module.pdAudioContext.state === 'suspended') {
+        Module.pdAudioContext.resume().catch(error => {
+          console.error('Could not resume Web Audio:', error);
+        });
+      }
+    }
+
+    function startGame() {
+      if (!romReady || launching) return;
+
+      try {
+        // Create and resume the context inside the button gesture. Safari in
+        // particular will not allow audio initialised later by callMain().
+        prepareAudio();
+      } catch (error) {
+        setStatus(`Could not start audio: ${error.message}`, true);
+        return;
+      }
+
+      launching = true;
+      startButton.disabled = true;
+      chooser.disabled = true;
+      saveIniButton.disabled = true;
+      setStatus('Starting...');
+      finishRomLoad();
+    }
+
+    document.getElementById('choose').addEventListener('click', () => chooser.click());
+    saveIniButton.addEventListener('click', downloadIni);
+    startButton.addEventListener('click', startGame);
+    chooser.addEventListener('change', () => importFiles(chooser.files));
+    launcher.addEventListener('dragover', event => {
+      event.preventDefault();
+      launcher.classList.add('drag');
+    });
+    launcher.addEventListener('dragleave', () => launcher.classList.remove('drag'));
+    launcher.addEventListener('drop', event => {
+      event.preventDefault();
+      launcher.classList.remove('drag');
+      importFiles(event.dataTransfer.files);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') saveRuntimeIni();
+    });
+    window.addEventListener('pagehide', saveRuntimeIni);
+
+    var Module = {
+      arguments: ['--basedir', '/data', '--savedir', '/save', '--no-crash-handler'],
+      canvas,
+      pdMouseDeltaX: 0,
+      pdMouseDeltaY: 0,
+      print: text => console.log(text),
+      printErr: text => console.error(text),
+      setStatus,
+      preRun: [function () {
+        FS.mkdir('/data');
+        FS.mkdir('/save');
+        FS.mount(IDBFS, { autoPersist: true }, '/save');
+
+        addRunDependency('user-files');
+        finishRomLoad = function () {
+          launcher.style.display = 'none';
+          canvas.style.display = 'block';
+          fitCanvasToViewport();
+          canvas.focus();
+          removeRunDependency('user-files');
+        };
+
+        addRunDependency('persistent-storage');
+        FS.syncfs(true, error => {
+          removeRunDependency('persistent-storage');
+          if (error) {
+            rejectFilesystem(error);
+            setStatus(`Could not open browser storage: ${error.message || error}`, true);
+            return;
+          }
+
+          try {
+            fitCanvasToViewport();
+            restoreIniFromLocalStorage();
+            resolveFilesystem();
+            setStatus('You can drop the files together or add them one at a time.');
+          } catch (storageError) {
+            rejectFilesystem(storageError);
+            setStatus(`Could not open local pd.ini storage: ${storageError.message || storageError}`, true);
+          }
+        });
+      }]
+    };
+
+    window.addEventListener('resize', fitCanvasToViewport);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', fitCanvasToViewport);
+    document.addEventListener('fullscreenchange', fitCanvasToViewport);
+    document.addEventListener('mousemove', event => {
+      if (document.pointerLockElement === canvas) {
+        Module.pdMouseDeltaX += event.movementX;
+        Module.pdMouseDeltaY += event.movementY;
+      }
+    }, { passive: true });
+  </script>
+  {{{ SCRIPT }}}
+</body>
+</html>
