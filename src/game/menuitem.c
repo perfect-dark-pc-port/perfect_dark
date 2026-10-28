@@ -2574,6 +2574,7 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 	f32 f0;
 	f32 f2;
 	f32 f14;
+	f32 sliderspeed = (item->flags & MENUITEMFLAG_SLIDER_SLOW) ? 0.25f : 1.0f;
 
 	if ((tickflags & MENUTICKFLAG_ITEMISFOCUSED)) {
 #ifndef PLATFORM_N64
@@ -2647,9 +2648,9 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 				f0 = data->slider.multiplier / 1000.0f;
 				f0 = f0 * 100.0f / item->param3;
 #if VERSION >= VERSION_PAL_BETA
-				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60freal;
+				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60freal * sliderspeed;
 #else
-				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60;
+				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60 * sliderspeed;
 #endif
 				f0 = item->param3 * f0 / 100.0f;
 
@@ -2689,6 +2690,7 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 #else
 					f2 *= g_Vars.diffframe60f;
 #endif
+					f2 *= sliderspeed;
 
 					if (inputs->xaxis < 0) {
 						f0 -= f2;

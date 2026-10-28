@@ -558,6 +558,12 @@ extern s32 g_TickExtraSleep;
 extern s32 g_MusicDisableMpDeath;
 extern s32 g_BgunGeMuzzleFlashes;
 extern s32 g_FileAutoSelect;
+extern s32 g_AllowAllGunsTwoHanded;
+extern s32 g_AllGunsSlayer;
+extern s32 g_RemovePsychosisGunAmmoLimit;
+#ifndef PLATFORM_N64
+extern s32 g_MaxLaptopSentriesPerCharacter;
+#endif
 
 extern u8 g_MpWeaponSetRandomFilters[NUM_MPWEAPONS];
 extern s32 g_MpWeaponRandomFilterNum;

@@ -135,6 +135,67 @@ struct autogunobj *g_ThrownLaptops = NULL;
 struct beam *g_ThrownLaptopBeams = NULL;
 s32 g_MaxThrownLaptops = 0;
 
+static bool laptopIsInOwnerSlotRange(struct autogunobj *laptop, s32 ownerindex)
+{
+	if (ownerindex < 0) {
+		return false;
+	}
+
+#ifdef PLATFORM_N64
+	if (ownerindex >= g_MaxThrownLaptops) {
+		return false;
+	}
+
+	return laptop == &g_ThrownLaptops[ownerindex];
+#else
+	s32 firstindex = ownerindex * g_MaxLaptopSentriesPerCharacter;
+	s32 endindex = firstindex + g_MaxLaptopSentriesPerCharacter;
+
+	if (g_MaxLaptopSentriesPerCharacter < 1) {
+		return false;
+	}
+
+	if (firstindex < 0 || firstindex >= g_MaxThrownLaptops) {
+		return false;
+	}
+
+	if (endindex > g_MaxThrownLaptops) {
+		endindex = g_MaxThrownLaptops;
+	}
+
+	return laptop >= &g_ThrownLaptops[firstindex] && laptop < &g_ThrownLaptops[endindex];
+#endif
+}
+
+#ifndef PLATFORM_N64
+static s32 laptopChooseOwnerSlotIndex(s32 ownerindex)
+{
+	s32 firstindex = ownerindex * g_MaxLaptopSentriesPerCharacter;
+	s32 endindex = firstindex + g_MaxLaptopSentriesPerCharacter;
+	s32 i;
+
+	if (g_MaxLaptopSentriesPerCharacter < 1) {
+		return -1;
+	}
+
+	if (firstindex < 0 || firstindex >= g_MaxThrownLaptops) {
+		return -1;
+	}
+
+	if (endindex > g_MaxThrownLaptops) {
+		endindex = g_MaxThrownLaptops;
+	}
+
+	for (i = firstindex; i < endindex; i++) {
+		if (g_ThrownLaptops[i].base.prop == NULL) {
+			return i;
+		}
+	}
+
+	return firstindex;
+}
+#endif
+
 /**
  * Attempt to call a lift from the given door.
  *
@@ -16216,7 +16277,7 @@ bool propobjInteract(struct prop *prop)
 				playernum = g_Vars.currentplayernum;
 			}
 
-			if (playernum >= 0 && laptop == &g_ThrownLaptops[playernum]) {
+			if (laptopIsInOwnerSlotRange(laptop, playernum)) {
 				obj->hidden |= OBJHFLAG_DELETING;
 				invGiveSingleWeapon(WEAPON_LAPTOPGUN);
 				currentPlayerQueuePickupWeaponHudmsg(WEAPON_LAPTOPGUN, false);
@@ -18483,6 +18544,7 @@ struct autogunobj *laptopDeploy(s32 modelnum, struct gset *gset, struct chrdata 
 	struct model *model;
 	struct autogunobj *laptop = NULL;
 	s32 index;
+	s32 laptopindex;
 
 	if (g_Vars.normmplayerisrunning) {
 		index = mpPlayerGetIndex(chr);
@@ -18490,10 +18552,16 @@ struct autogunobj *laptopDeploy(s32 modelnum, struct gset *gset, struct chrdata 
 		index = playermgrGetPlayerNumByProp(chr->prop);
 	}
 
-	if (index >= 0 && index < g_MaxThrownLaptops) {
+#ifdef PLATFORM_N64
+	laptopindex = index;
+#else
+	laptopindex = laptopChooseOwnerSlotIndex(index);
+#endif
+
+	if (laptopindex >= 0 && laptopindex < g_MaxThrownLaptops) {
 		setupLoadModeldef(modelnum);
 		modeldef = g_ModelStates[modelnum].modeldef;
-		laptop = &g_ThrownLaptops[index];
+		laptop = &g_ThrownLaptops[laptopindex];
 
 		if (laptop->base.prop) {
 #if VERSION >= VERSION_NTSC_1_0
@@ -18589,7 +18657,7 @@ struct autogunobj *laptopDeploy(s32 modelnum, struct gset *gset, struct chrdata 
 				laptop->ammoquantity = 255;
 			}
 
-			laptop->beam = &g_ThrownLaptopBeams[index];
+			laptop->beam = &g_ThrownLaptopBeams[laptopindex];
 			laptop->beam->age = -1;
 			laptop->yzero = 0;
 			laptop->xzero = 0;

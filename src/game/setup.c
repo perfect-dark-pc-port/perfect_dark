@@ -297,7 +297,11 @@ void propsReset(void)
 	g_AutogunDamageRxScale = 1;
 	g_AmmoQuantityScale = 1;
 
+#ifdef PLATFORM_N64
 	g_MaxThrownLaptops = g_Vars.normmplayerisrunning ? 12 : PLAYERCOUNT();
+#else
+	g_MaxThrownLaptops = (g_Vars.normmplayerisrunning ? MAX_MPCHRS : PLAYERCOUNT()) * g_MaxLaptopSentriesPerCharacter;
+#endif
 
 	g_ThrownLaptops = mempAlloc(ALIGN16(g_MaxThrownLaptops * sizeof(struct autogunobj)), MEMPOOL_STAGE);
 	g_ThrownLaptopBeams = mempAlloc(ALIGN16(g_MaxThrownLaptops * sizeof(struct beam)), MEMPOOL_STAGE);

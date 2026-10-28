@@ -100,9 +100,6 @@ struct cheat g_Cheats[] = {
 	{ L_MPWEAPONS_114, WEAPON_DMC,        0,                             0,       CHEATFLAG_FIRINGRANGE                        }, // DMC
 	{ L_MPWEAPONS_115, WEAPON_AR53,       0,                             0,       CHEATFLAG_FIRINGRANGE                        }, // AR53
 	{ L_MPWEAPONS_116, WEAPON_RCP45,      0,                             0,       CHEATFLAG_FIRINGRANGE                        }, // RC-P45
-#ifndef PLATFORM_N64
-	{ L_MPWEAPONS_215, 0,                 SOLOSTAGEINDEX_EXTRACTION,     DIFF_A,  CHEATFLAG_COMPLETION                         }, // Dual wield all guns
-#endif
 };
 
 u32 cheatIsUnlocked(s32 cheat_id)
@@ -1117,16 +1114,6 @@ struct menuitem g_CheatsGameplayMenuItems[] = {
 		0,
 		cheatCheckboxMenuHandler,
 	},
-#ifndef PLATFORM_N64
-	{
-		MENUITEMTYPE_CHECKBOX,
-		CHEAT_DUALWIELDALLGUNS,
-		0,
-		(uintptr_t)&cheatGetNameIfUnlocked,
-		0,
-		cheatCheckboxMenuHandler,
-	},
-#endif
 	{
 		MENUITEMTYPE_SEPARATOR,
 		0,

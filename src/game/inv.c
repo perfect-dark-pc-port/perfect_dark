@@ -276,11 +276,21 @@ bool invHasSingleWeaponOrProp(s32 weaponnum)
 	return false;
 }
 
+static bool invShouldSkipSlayerInAllGuns(void)
+{
+#ifdef PLATFORM_N64
+	return true;
+#else
+	return !g_AllGunsSlayer;
+#endif
+}
+
 s32 invAddOneIfCantHaveSlayer(s32 index)
 {
 	if (mainGetStageNum());
 
-	if (mainGetStageNum() != STAGE_ATTACKSHIP
+	if (invShouldSkipSlayerInAllGuns()
+			&& mainGetStageNum() != STAGE_ATTACKSHIP
 			&& mainGetStageNum() != STAGE_SKEDARRUINS
 			&& index >= WEAPON_SLAYER) {
 		index++;
@@ -299,7 +309,9 @@ s32 currentStageForbidsSlayer(void)
 {
 	bool value = VERSION >= VERSION_JPN_FINAL ? 1 : 0;
 
-	if (mainGetStageNum() != STAGE_ATTACKSHIP && mainGetStageNum() != STAGE_SKEDARRUINS) {
+	if (invShouldSkipSlayerInAllGuns()
+			&& mainGetStageNum() != STAGE_ATTACKSHIP
+			&& mainGetStageNum() != STAGE_SKEDARRUINS) {
 		value++;
 	}
 
@@ -316,7 +328,7 @@ bool invCanHaveAllGunsWeapon(s32 weaponnum)
 	}
 #endif
 
-	if (weaponnum == WEAPON_SLAYER) {
+	if (invShouldSkipSlayerInAllGuns() && weaponnum == WEAPON_SLAYER) {
 		canhave = false;
 	}
 
@@ -512,8 +524,7 @@ s32 invGiveWeaponsByProp(struct prop *prop)
 			otherweaponnum;
 
 #ifndef PLATFORM_N64
-			// always allow picking up a second gun if dual wield cheat is on
-			if (!g_Vars.normmplayerisrunning && cheatIsActive(CHEAT_DUALWIELDALLGUNS)) {
+			if (!g_Vars.normmplayerisrunning && g_AllowAllGunsTwoHanded) {
 				if (invHasSingleWeaponExcAllGuns(weaponnum) && !invHasDoubleWeaponExcAllGuns(weaponnum, weaponnum)) {
 					if (invGiveDoubleWeapon(weaponnum, weaponnum)) {
 						return 2;

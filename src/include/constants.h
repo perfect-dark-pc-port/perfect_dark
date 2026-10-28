@@ -450,7 +450,6 @@
 #define CHEAT_DMC                    39
 #define CHEAT_AR53                   40
 #define CHEAT_RCP45                  41
-#define CHEAT_DUALWIELDALLGUNS       42
 
 #define CHEATFLAG_TIMED       0
 #define CHEATFLAG_ALWAYSON    1
@@ -1667,6 +1666,7 @@
 #define MENUITEMFLAG_LITERAL_TEXT            0x08000000
 #define MENUITEMFLAG_SLIDER_WIDE             0x10000000
 #define MENUITEMFLAG_SLIDER_DEFERRED         0x20000000
+#define MENUITEMFLAG_SLIDER_SLOW             0x40000000
 
 #define MENUITEMTYPE_LABEL       0x01
 #define MENUITEMTYPE_LIST        0x02

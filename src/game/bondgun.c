@@ -12274,6 +12274,11 @@ bool bgunAmmotypeAllowsUnlimitedAmmo(u32 ammotype)
 		}
 		break;
 	case AMMOTYPE_PSYCHOSIS:
+#ifndef PLATFORM_N64
+		if (g_RemovePsychosisGunAmmoLimit) {
+			break;
+		}
+#endif
 	case AMMOTYPE_17:
 	case AMMOTYPE_BUG:
 	case AMMOTYPE_MICROCAMERA:
