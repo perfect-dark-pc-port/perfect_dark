@@ -1725,27 +1725,28 @@ struct menubind {
 };
 
 static const struct menubind menuBinds[] = {
-	{ CK_ZTRIG,  "Fire [ZT]\n",         "N64 Z Trigger\n" },
-	{ CK_LTRIG,  "Fire Mode [LT]\n",    "N64 L Trigger\n"},
-	{ CK_RTRIG,  "Aim Mode [RT]\n",     "N64 R Trigger\n" },
-	{ CK_A,      "Use / Accept [A]\n",  "N64 A Button\n" },
-	{ CK_B,      "Use / Cancel [B]\n",  "N64 B Button\n" },
-	{ CK_START,  "Pause Menu [ST]\n",   "N64 Start\n" },
-	{ CK_DPAD_U, "D-Pad Up [DU]\n",     "N64 D-Pad Up\n" },
-	{ CK_DPAD_R, "D-Pad Right [DR]\n",  "N64 D-Pad Right\n" },
-	{ CK_DPAD_L, "Prev Weapon [DL]\n",  "N64 D-Pad Left\n" },
-	{ CK_DPAD_D, "Radial Menu [DD]\n",  "N64 D-Pad Down\n" },
-	{ CK_C_U,    "Forward [CU]\n",      "N64 C-Up\n" },
-	{ CK_C_D,    "Backward [CD]\n",     "N64 C-Down\n" },
-	{ CK_C_R,    "Strafe Right [CR]\n", "N64 C-Right\n" },
-	{ CK_C_L,    "Strafe Left [CL]\n",  "N64 C-Left\n" },
-	{ CK_X,      "Reload [X]\n",        "N64 Ext X\n" },
-	{ CK_Y,      "Next Weapon [Y]\n",   "N64 Ext Y\n" },
-	{ CK_8000,   "Cycle Crouch [+]\n",  "N64 Ext 8000\n" },
-	{ CK_4000,   "Half Crouch [+]\n",   "N64 Ext 4000\n" },
-	{ CK_2000,   "Full Crouch [+]\n",   "N64 Ext 2000\n" },
-	{ CK_ACCEPT, "UI Accept [+]\n",     "EXT UI Accept\n" },
-	{ CK_CANCEL, "UI Cancel [+]\n",     "EXT UI Cancel\n" },
+	{ CK_ZTRIG,   "Fire [ZT]\n",                     "N64 Z Trigger\n" },
+	{ CK_LTRIG,   "Fire Mode [LT]\n",                "N64 L Trigger\n" },
+	{ CK_RTRIG,   "Aim Mode [RT]\n",                 "N64 R Trigger\n" },
+	{ CK_A,       "Use / Accept [A]\n",              "N64 A Button\n" },
+	{ CK_B,       "Use / Cancel [B]\n",              "N64 B Button\n" },
+	{ CK_START,   "Pause Menu [ST]\n",               "N64 Start\n" },
+	{ CK_DPAD_U,  "D-Pad Up [DU]\n",                 "N64 D-Pad Up\n" },
+	{ CK_DPAD_R,  "D-Pad Right [DR]\n",              "N64 D-Pad Right\n" },
+	{ CK_DPAD_L,  "Prev Weapon [DL]\n",              "N64 D-Pad Left\n" },
+	{ CK_DPAD_D,  "Radial Menu [DD]\n",              "N64 D-Pad Down\n" },
+	{ CK_C_U,     "Forward [CU]\n",                  "N64 C-Up\n" },
+	{ CK_C_D,     "Backward [CD]\n",                 "N64 C-Down\n" },
+	{ CK_C_R,     "Strafe Right [CR]\n",             "N64 C-Right\n" },
+	{ CK_C_L,     "Strafe Left [CL]\n",              "N64 C-Left\n" },
+	{ CK_X,       "Reload [X]\n",                    "N64 Ext X\n" },
+	{ CK_Y,       "Next Weapon [Y]\n",               "N64 Ext Y\n" },
+	{ CK_8000,    "Cycle Crouch [+]\n",              "N64 Ext 8000\n" },
+	{ CK_4000,    "Half Crouch [+]\n",               "N64 Ext 4000\n" },
+	{ CK_2000,    "Full Crouch [+]\n",               "N64 Ext 2000\n" },
+	{ CK_0040,    "Reset Camera/Crosshair [+]\n",    "EXT Reset Camera/Crosshair\n" },
+	{ CK_ACCEPT,  "UI Accept [+]\n",                 "EXT UI Accept\n" },
+	{ CK_CANCEL,  "UI Cancel [+]\n",                 "EXT UI Cancel\n" },
 };
 
 static const char *menutextBind(struct menuitem *item);
@@ -1764,6 +1765,7 @@ static MenuItemHandlerResult menuhandlerResetBindsN64(s32 operation, struct menu
 	}
 
 struct menuitem g_ExtendedBindsMenuItems[] = {
+	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),

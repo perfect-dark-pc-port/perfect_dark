@@ -108,6 +108,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 | Alt fire mode    | F                      | RB                       | L Trigger                 |
 | Alt-fire oneshot | `F + LMB` or `E + LMB` | `A + RT` or  `RB + RT`   | `A + Z`     or `L + Z`    |
 | Quick-detonate   | `E + Q`   or `E + R`   | `A + B`  or  `A + X`     | `A + D-Left`or `A + X`    |
+| Reset Camera / Crosshair   | C            | RS CLICK                 | N/A                       |
 
 ## Building
 

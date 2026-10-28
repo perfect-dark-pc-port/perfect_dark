@@ -4751,6 +4751,8 @@ enum weaponnum {
 #define CROUCHMODE_TOGGLE 2 // press the crouch buttons to toggle stance
 #define CROUCHMODE_TOGGLE_ANALOG (CROUCHMODE_ANALOG | CROUCHMODE_TOGGLE)
 
+#define RESET_CAMERA CK_0040 // reset camera and/or crosshair to default position
+
 #define CROSSHAIR_HEALTH_OFF 0
 #define CROSSHAIR_HEALTH_ON_GREEN 1
 #define CROSSHAIR_HEALTH_ON_WHITE 2

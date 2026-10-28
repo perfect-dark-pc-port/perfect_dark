@@ -102,7 +102,7 @@ enum contkey {
 	CK_STICK_YPOS,
 	CK_ACCEPT,
 	CK_CANCEL,
-	CK_0040,
+	CK_0040, // Reset Camera/Crosshair action
 	CK_0080,
 	CK_0100,
 	CK_0200,
@@ -180,6 +180,9 @@ s32 inputKeyJustPressed(u32 vk);
 
 // idx is controller index, contbtn is one of the CONT_ constants
 s32 inputButtonPressed(s32 idx, u32 contbtn);
+
+// idx is controller index, ck is one of the CK_ constants
+s32 inputBindPressed(s32 idx, u32 ck);
 
 // bind virtkey vk to n64 pad #idx's button/axis ck as represented by its contkey value
 // if bind is -1, picks a bind slot automatically
