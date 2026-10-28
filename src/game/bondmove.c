@@ -468,6 +468,43 @@ static void bmoveApplyCrosshairSwivel(struct movedata *movedata, f32 mlookscale,
 #endif
 }
 
+#ifndef PLATFORM_N64
+/**
+ * Apply precision-based input to speed values for crosshair sway detection
+ */
+static void bmovePrecisionInputToCrosshairSwaySpeed(struct movedata *movedata, f32 mlookscale, bool vertical)
+{
+	if (vertical) { // Vertical sway movement
+		if (movedata->freelookdy != 0.0f) {
+			g_Vars.currentplayer->speedverta += -movedata->freelookdy * mlookscale;
+		}
+	} else { // Horizontal sway movement
+		if (movedata->freelookdx != 0.0f) {
+			g_Vars.currentplayer->speedthetacontrol += movedata->freelookdx * mlookscale;
+		}
+	}
+}
+
+/**
+ * Apply camera movement
+ * Supports angle-based camera movement for precision-based inputs
+ */
+static void bmoveApplyCameraMovement(struct movedata *movedata, f32 mlookscale, bool vertical)
+{
+	f32 timescale = g_Vars.lvupdate60freal * 3.5f;
+
+	if (vertical) { // Camera vertical movement
+		if (movedata->freelookdy != 0.0f) {
+			g_Vars.currentplayer->vv_verta += -movedata->freelookdy * (1.0f - mlookscale * timescale);
+		}
+	} else { // Camera horizontal movement
+		if (movedata->freelookdx != 0.0f) {
+			g_Vars.currentplayer->vv_theta += movedata->freelookdx * (1.0f - mlookscale * timescale);
+		}
+	}
+}
+#endif
+
 /**
  * Calculate the lookahead angle.
  *
@@ -744,7 +781,7 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 	f32 increment2;
 	f32 newverta;
 #ifndef PLATFORM_N64
-	const f32 mlookscale = g_Vars.lvupdate240 ? (4.f / (f32)g_Vars.lvupdate240) : 4.f;
+	const f32 mlookscale = g_Vars.lvupdate240 ? (1.f / (f32)g_Vars.lvupdate240) : 1.f;
 	const bool allowmlook = (g_Vars.currentplayernum == 0) && (allowc1x || allowc1y);
 	bool allowmcross = false;
 #endif
@@ -805,9 +842,11 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 
 #ifndef PLATFORM_N64
 	if (allowmlook) {
+		s32 mousedx, mousedy;
 		inputMouseGetScaledDelta(&movedata.freelookdx, &movedata.freelookdy);
+		inputMouseGetRawDelta(&mousedx, &mousedy);
 		allowmcross = (PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_CLASSIC) &&
-			(movedata.freelookdx || movedata.freelookdy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
+			(mousedx || mousedy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
 		if (movedata.invertpitch) {
 			movedata.freelookdy = -movedata.freelookdy;
 		}
@@ -2079,11 +2118,12 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 					fVar25 *= -fVar25;
 				}
 
-#ifndef PLATFORM_N64
-				fVar25 += movedata.freelookdy * mlookscale;
-#endif
-
 				g_Vars.currentplayer->speedverta = -fVar25 * tmp;
+
+#ifndef PLATFORM_N64
+				// Add mouse to speedverta for crosshair sway detection
+				bmovePrecisionInputToCrosshairSwaySpeed(&movedata, mlookscale, true);
+#endif
 			} else if (movedata.speedvertadown > 0) {
 				bmoveUpdateSpeedVerta(movedata.speedvertadown);
 
@@ -2101,6 +2141,13 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 			}
 
 			g_Vars.currentplayer->vv_verta += g_Vars.currentplayer->speedverta * g_Vars.lvupdate60freal * 3.5f;
+
+#ifndef PLATFORM_N64
+			// Apply mouse 1:1 vertical rotation
+			if (movedata.cannaturalpitch) {
+				bmoveApplyCameraMovement(&movedata, mlookscale, true);
+			}
+#endif
 		}
 	}
 
@@ -2120,11 +2167,12 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 			fVar25 *= -fVar25;
 		}
 
-#ifndef PLATFORM_N64
-		fVar25 += movedata.freelookdx * mlookscale;
-#endif
-
 		g_Vars.currentplayer->speedthetacontrol = fVar25 * tmp;
+
+#ifndef PLATFORM_N64
+		// Add mouse to speedthetacontrol for crosshair sway detection
+		bmovePrecisionInputToCrosshairSwaySpeed(&movedata, mlookscale, false);
+#endif
 	} else if (movedata.aimturnleftspeed > 0) {
 		bmoveUpdateSpeedThetaControl(movedata.aimturnleftspeed);
 	} else if (movedata.aimturnrightspeed > 0) {
@@ -2135,6 +2183,13 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 
 	g_Vars.currentplayer->speedtheta = g_Vars.currentplayer->speedthetacontrol;
 	bmoveUpdateSpeedTheta();
+
+#ifndef PLATFORM_N64
+	// Apply mouse 1:1 horizontal rotation
+	if (movedata.cannaturalturn) {
+		bmoveApplyCameraMovement(&movedata, mlookscale, false);
+	}
+#endif
 
 	if (movedata.detonating) {
 		g_Vars.currentplayer->hands[HAND_RIGHT].mode = HANDMODE_NONE;
@@ -2233,8 +2288,9 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 			// joystick is inactive, move crosshair using the mouse
 			const f32 xcoeff = 320.f / 1080.f;
 			const f32 ycoeff = 240.f / 1080.f;
-			const f32 xscale = (PLAYER_EXTCFG().mouseaimspeedx * xcoeff) / g_Vars.currentplayer->aspect;
-			const f32 yscale = PLAYER_EXTCFG().mouseaimspeedy * ycoeff;
+			// TODO: until crosshair decouple is fully implemented, we'll reduce mouseaimspeed's scaling
+			const f32 xscale = (PLAYER_EXTCFG().mouseaimspeedx * 0.20f * xcoeff) / g_Vars.currentplayer->aspect;
+			const f32 yscale = PLAYER_EXTCFG().mouseaimspeedy * 0.20f * ycoeff;
 			f32 x = g_Vars.currentplayer->swivelpos[0] + movedata.freelookdx * xscale;
 			f32 y = g_Vars.currentplayer->swivelpos[1] + movedata.freelookdy * yscale;
 			x = (x < -1.f) ? -1.f : ((x > 1.f) ? 1.f : x);
