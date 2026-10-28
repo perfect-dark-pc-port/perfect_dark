@@ -11,6 +11,7 @@
 #include "utils.h"
 #include "system.h"
 #include "fs.h"
+#include "glyph.h"
 
 #if !SDL_VERSION_ATLEAST(2, 0, 14)
 // this was added in 2.0.14
@@ -46,6 +47,7 @@ static SDL_GameController *pads[INPUT_MAX_CONTROLLERS];
 	.swapSticks = 1, \
 	.deviceIndex = -1, \
 	.cancelCButtons = 0, \
+	.buttonPromptOverride = -1, \
 }
 
 static struct controllercfg {
@@ -58,6 +60,7 @@ static struct controllercfg {
 	s32 swapSticks;
 	s32 deviceIndex;
 	s32 cancelCButtons;
+	s32 buttonPromptOverride;
 } padsCfg[INPUT_MAX_CONTROLLERS] = {
 	CONTROLLERCFG_DEFAULT,
 	CONTROLLERCFG_DEFAULT,
@@ -1333,6 +1336,22 @@ void inputSetMouseLockMode(s32 lockmode)
 	}
 }
 
+s32 inputGetButtonPromptOverride(s32 cidx)
+{
+	if (cidx < 0 || cidx >= INPUT_MAX_CONTROLLERS) {
+		return 0;
+	}
+	return padsCfg[cidx].buttonPromptOverride;
+}
+
+void inputSetButtonPromptOverride(s32 cidx, s32 override)
+{
+	if (cidx < 0 || cidx >= INPUT_MAX_CONTROLLERS) {
+		return;
+	}
+	padsCfg[cidx].buttonPromptOverride = override;
+}
+
 const char *inputGetContKeyName(u32 ck)
 {
 	if (ck >= CK_TOTAL_COUNT) {
@@ -1361,6 +1380,126 @@ const char *inputGetKeyName(s32 vk)
 		snprintf(vkNames[vk], sizeof(vkNames[vk]), "UNKNOWN%d", vk);
 	}
 	return vkNames[vk];
+}
+
+const char *inputGetButtonDisplayName(s32 vk)
+{
+	if (vk < VK_JOY_BEGIN || vk >= VK_TOTAL_COUNT) {
+		return inputGetKeyName(vk);
+	}
+
+	const u32 cidx = (vk - VK_JOY_BEGIN) / INPUT_MAX_CONTROLLER_BUTTONS;
+	u32 jbtn = (vk - VK_JOY_BEGIN) % INPUT_MAX_CONTROLLER_BUTTONS;
+
+	if (jbtn >= INPUT_MAX_CONTROLLER_BUTTONS) {
+		return inputGetKeyName(vk);
+	}
+
+	const s32 override = (cidx < INPUT_MAX_CONTROLLERS) ? padsCfg[cidx].buttonPromptOverride : GLYPH_AUTO;
+
+	// Internal glyphs (legacy)
+	if (override == GLYPH_INTERNAL) {
+		if (jbtn < sizeof(vkJoyNames) / sizeof(vkJoyNames[0])) {
+			static char playerButtonName[64];
+			const char *baseName = vkJoyNames[jbtn];
+			snprintf(playerButtonName, sizeof(playerButtonName), "JOY%d_%s",
+				(int)(cidx + 1), baseName + 5);
+			return playerButtonName;
+		}
+		return inputGetKeyName(vk);
+	}
+
+	// Nintendo 64 controller prompts
+	if (override == GLYPH_NINTENDO_64) {
+		return glyphGetControllerButtonName(CONTROLLER_ICON_NINTENDO_64, jbtn);
+	}
+
+	SDL_GameController *ctrl = (cidx < INPUT_MAX_CONTROLLERS) ? pads[cidx] : NULL;
+
+	// Glyph override function
+	if (override != GLYPH_AUTO) {
+		const ControllerIconType iconType = (ControllerIconType)(override - 1);
+		return glyphGetControllerButtonName(iconType, jbtn);
+	}
+	
+	// Auto-detect glyphs based on controller type
+	if (cidx < INPUT_MAX_CONTROLLERS && pads[cidx]) {
+		const SDL_GameControllerType type = SDL_GameControllerGetType(pads[cidx]);
+		
+		switch (type) {
+			case SDL_CONTROLLER_TYPE_XBOX360:
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_XBOX360);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+			case SDL_CONTROLLER_TYPE_XBOXONE:
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_XBOXONE);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+			case SDL_CONTROLLER_TYPE_PS3:
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_PS3);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+			case SDL_CONTROLLER_TYPE_PS4:
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_PS4);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+#if SDL_VERSION_ATLEAST(2, 0, 14)
+			case SDL_CONTROLLER_TYPE_PS5:
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_PS5);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+#endif
+			case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO:
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+#if defined(SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT)
+			case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+#endif
+#if defined(SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT)
+			case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+#endif
+#if defined(SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR)
+			case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+#endif
+#endif
+				{
+					int iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_NINTENDO_SWITCH);
+					return glyphGetControllerButtonName(iconType, jbtn);
+				}
+            case SDL_CONTROLLER_TYPE_VIRTUAL:
+            case SDL_CONTROLLER_TYPE_UNKNOWN:
+            default:
+                {
+                    int iconType = CONTROLLER_ICON_GENERIC;
+                    if (ctrl) {
+                        if (SDL_GameControllerGetVendor(ctrl) == VALVE_VENDOR_ID) {
+                            Uint16 product = SDL_GameControllerGetProduct(ctrl);
+                            
+                            // Steam Deck
+                            if (product == STEAM_DECK_BUILTIN_PID) {
+                                iconType = CONTROLLER_ICON_STEAM_DECK;
+                            }
+                            // Steam Controller
+                            else if (isSteamControllerPID(product)) {
+                                iconType = CONTROLLER_ICON_STEAM_CONTROLLER;
+                            }
+                            // Steam Virtual Gamepad
+                            else if (product == STEAM_VIRTUAL_GAMEPAD_PID) {
+                                iconType = getSteamVirtualControllerDetection(ctrl, CONTROLLER_ICON_STEAM_DECK);
+                            }
+                        }
+                    }
+                    return glyphGetControllerButtonName(iconType, jbtn);
+                }
+		}
+	}
+	
+	// fallback to generic type if no controller is connected or recognized
+	return glyphGetControllerButtonName(CONTROLLER_ICON_GENERIC, jbtn);
 }
 
 s32 inputGetKeyByName(const char *name)
@@ -1542,6 +1681,7 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 		configRegisterInt(strFmt("%s.CancelCButtons", secname), &padsCfg[c].cancelCButtons, 0, 1);
 		configRegisterInt(strFmt("%s.SwapSticks", secname), &padsCfg[c].swapSticks, 0, 1);
 		configRegisterInt(strFmt("%s.ControllerIndex", secname), &padsCfg[c].deviceIndex, -1, 0x7FFFFFFF);
+		configRegisterInt(strFmt("%s.ButtonPromptOverride", secname), &padsCfg[c].buttonPromptOverride, GLYPH_AUTO, GLYPH_STEAM_DECK);
 		secname[13] = '.';
 		for (u32 ck = 0; ck < CK_TOTAL_COUNT; ++ck) {
 			snprintf(keyname, sizeof(keyname), "%s.%s", secname, inputGetContKeyName(ck));

@@ -121,6 +121,21 @@ enum mouselockmode {
 	MLOCK_AUTO = 2
 };
 
+enum buttonpromptmode {
+	GLYPH_AUTO = -1,
+	GLYPH_GENERIC = 0,
+	GLYPH_INTERNAL = 1,
+	GLYPH_XBOX360 = 2,
+	GLYPH_XBOXONE = 3,
+	GLYPH_PS3 = 4,
+	GLYPH_PS4 = 5,
+	GLYPH_PS5 = 6,
+	GLYPH_NINTENDO_SWITCH = 7,
+	GLYPH_NINTENDO_64 = 8,
+	GLYPH_STEAM_CONTROLLER = 9,
+	GLYPH_STEAM_DECK = 10,
+};
+
 // returns bitmask of connected controllers or -1 if failed
 s32 inputInit(void);
 
@@ -193,6 +208,9 @@ s32 inputGetKeyByName(const char *name);
 // get human-readable name from VK_ value
 const char *inputGetKeyName(s32 vk);
 
+// get human-readable controller button display name from VK_ value
+const char *inputGetButtonDisplayName(s32 vk);
+
 // get CK_ value from human-readable name
 s32 inputGetContKeyByName(const char *name);
 
@@ -248,6 +266,10 @@ s32 inputGetLastKey(void);
 // get/set Input.MouseLockMode
 s32 inputGetMouseLockMode(void);
 void inputSetMouseLockMode(s32 lockmode);
+
+// get/set button prompt override
+s32 inputGetButtonPromptOverride(s32 cidx);
+void inputSetButtonPromptOverride(s32 cidx, s32 override);
 
 // same as inputLockMouse but works only if mouse is enabled and lockmode == MLOCK_AUTO
 s32 inputAutoLockMouse(s32 wantlock);

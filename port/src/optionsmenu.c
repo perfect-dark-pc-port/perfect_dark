@@ -14,6 +14,7 @@
 #include "video.h"
 #include "input.h"
 #include "config.h"
+#include "glyph.h"
 
 static s32 g_ExtMenuPlayer = 0;
 static struct menudialogdef *g_ExtNextDialog = NULL;
@@ -616,6 +617,52 @@ static MenuItemHandlerResult menuhandlerController(s32 operation, struct menuite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerButtonPromptOverride(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	static const struct {
+		const char *name;
+		s32 value;
+	} promptoptions [] = {
+		{ "Auto", GLYPH_AUTO },
+		{ "Generic", GLYPH_GENERIC },
+		{ "Internal", GLYPH_INTERNAL },
+		{ "Xbox 360 Controller", GLYPH_XBOX360 },
+		{ "Xbox Wireless Controller", GLYPH_XBOXONE },
+		{ "DualShock 3", GLYPH_PS3 },
+		{ "DualShock 4", GLYPH_PS4 },
+		{ "DualSense", GLYPH_PS5 },
+		{ "Nintendo Switch Controller", GLYPH_NINTENDO_SWITCH },
+		{ "Nintendo 64 Controller", GLYPH_NINTENDO_64 },
+		{ "Steam Controller", GLYPH_STEAM_CONTROLLER },
+		{ "Steam Deck", GLYPH_STEAM_DECK }
+	};
+
+	switch (operation) {
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(promptoptions);
+		break;
+	case MENUOP_GETOPTIONTEXT:
+		return (intptr_t)promptoptions[data->dropdown.value].name;
+	case MENUOP_SET:
+		inputSetButtonPromptOverride(g_ExtMenuPlayer, promptoptions[data->dropdown.value].value);
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		{
+			s32 currentValue = inputGetButtonPromptOverride(g_ExtMenuPlayer);
+			for (s32 i = 0; i < ARRAYCOUNT(promptoptions); i++) {
+				if (promptoptions[i].value == currentValue) {
+					data->dropdown.value = i;
+					return 0;
+				}
+			}
+			data->dropdown.value = 0;
+		}
+		break;
+	}
+
+	return 0;
+}
+
 struct menuitem g_ExtendedControllerMenuItems[] = {
 	{
 		MENUITEMTYPE_DROPDOWN,
@@ -624,6 +671,14 @@ struct menuitem g_ExtendedControllerMenuItems[] = {
 		(uintptr_t)"Controller",
 		0,
 		menuhandlerController,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Button Prompt Styles",
+		0,
+		menuhandlerButtonPromptOverride,
 	},
 	{
 		MENUITEMTYPE_CHECKBOX,
@@ -1869,7 +1924,7 @@ static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *ite
 	case MENUOP_GETOPTIONTEXT:
 		binds = inputKeyGetBinds(g_ExtMenuPlayer, menuBinds[idx].ck);
 		if (binds && binds[data->dropdown.value]) {
-			strncpy(keyname, inputGetKeyName(binds[data->dropdown.value]), sizeof(keyname) - 1);
+			strncpy(keyname, inputGetButtonDisplayName(binds[data->dropdown.value]), sizeof(keyname) - 1);
 			for (char *p = keyname; *p; ++p) {
 				if (*p == '_') *p = ' ';
 			}
