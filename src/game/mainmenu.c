@@ -4867,6 +4867,12 @@ MenuDialogHandlerResult menudialogMainMenu(s32 operation, struct menudialogdef *
 		g_Menus[g_MpPlayerNum].main.unke2c = 0;
 		break;
 	case MENUOP_TICK:
+#ifndef PLATFORM_N64
+		if (g_SkipToCombatSimulator) {
+			menuhandlerMainMenuCombatSimulator(MENUOP_SET, NULL, NULL);
+			break;
+		}
+#endif
 		if (g_Menus[g_MpPlayerNum].curdialog &&
 				g_Menus[g_MpPlayerNum].curdialog->definition == dialogdef) {
 			g_MissionConfig.iscoop = false;

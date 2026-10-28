@@ -5395,6 +5395,12 @@ MenuDialogHandlerResult menudialogCombatSimulator(s32 operation, struct menudial
 		g_Vars.waitingtojoin[2] = false;
 		g_Vars.waitingtojoin[3] = false;
 	}
+#ifndef PLATFORM_N64
+	else if (g_SkipToCombatSimulator) {
+		g_SkipToCombatSimulator = false;
+		menuhandlerMpAdvancedSetup(MENUOP_SET, NULL, NULL);
+	}
+#endif
 
 	if (g_Menus[g_MpPlayerNum].curdialog
 			&& g_Menus[g_MpPlayerNum].curdialog->definition == &g_CombatSimulatorMenuDialog

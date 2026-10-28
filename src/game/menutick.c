@@ -268,7 +268,13 @@ void menuTick(void)
 	if (g_FileState == FILESTATE_UNSELECTED && g_Vars.stagenum == STAGE_CITRAINING) {
 		g_PlayersWithControl[0] = false;
 
+#ifndef PLATFORM_N64
+		if ((g_Vars.lvframenum > 30 && g_Vars.tickmode != TICKMODE_CUTSCENE) ||
+			(g_SkipJoOnPc && g_Vars.lvframenum >= 7)) {
+			g_SkipJoOnPc = false;
+#else
 		if (g_Vars.lvframenum > 30 && g_Vars.tickmode != TICKMODE_CUTSCENE) {
+#endif
 			g_Menus[0].openinhibit = 0;
 			g_Menus[1].openinhibit = 0;
 			g_Menus[2].openinhibit = 0;
@@ -581,7 +587,13 @@ void menuTick(void)
 
 				if (g_MenuData.root == MENUROOT_MPSETUP || g_MenuData.root == MENUROOT_4MBMAINMENU) {
 					startmusic = true;
+#ifndef PLATFORM_N64
+					if (!g_SkipToCombatSimulator) {
+#endif
 					sndStart(var80095200, SFX_EXPLOSION_8098, 0, -1, -1, -1, -1, -1);
+#ifndef PLATFORM_N64
+					}
+#endif
 				}
 
 				if (g_MenuData.root == MENUROOT_MAINMENU || g_MenuData.root == MENUROOT_TRAINING) {
@@ -593,6 +605,10 @@ void menuTick(void)
 								|| g_Vars.currentplayer->prop->rooms[0] == 0x1e
 								|| (dtdata && dtdata->intraining))) {
 						startmusic = false;
+#ifndef PLATFORM_N64
+					} else if (g_SkipToCombatSimulator) {
+						startmusic = false;
+#endif
 					} else {
 						startmusic = true;
 					}

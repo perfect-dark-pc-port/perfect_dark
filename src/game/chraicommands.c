@@ -4908,7 +4908,11 @@ bool aiIfCutsceneButtonPressed(void)
 	u8 *cmd = g_Vars.ailist + g_Vars.aioffset;
 
 	if ((g_Vars.in_cutscene && g_CutsceneSkipRequested) ||
+#ifndef PLATFORM_N64
+			(g_Vars.stagenum == STAGE_CITRAINING && (var80087260 > 0 || g_SkipJoOnPc))) {
+#else
 			(g_Vars.stagenum == STAGE_CITRAINING && var80087260 > 0)) {
+#endif
 		g_Vars.aioffset = chraiGoToLabel(g_Vars.ailist, g_Vars.aioffset, cmd[2]);
 	} else {
 		g_Vars.aioffset += 3;
