@@ -1369,13 +1369,13 @@ static MenuItemHandlerResult menuhandlerCrosshairEdgeBoundary(s32 operation, str
 {
 	switch (operation) {
 	case MENUOP_GETSLIDER:
-		data->slider.value = (s32)(g_PlayerExtCfg[g_ExtMenuPlayer].crosshairedgeboundary * 10.f + 0.5f);
+		data->slider.value = (s32)(g_PlayerExtCfg[g_ExtMenuPlayer].crosshairedgeboundary * 100.f + 0.5f);
 		break;
 	case MENUOP_SET:
-		g_PlayerExtCfg[g_ExtMenuPlayer].crosshairedgeboundary = (f32)data->slider.value / 10.f;
+		g_PlayerExtCfg[g_ExtMenuPlayer].crosshairedgeboundary = (f32)data->slider.value / 100.f;
 		break;
 	case MENUOP_GETSLIDERLABEL:
-		sprintf(data->slider.label, "%d", (s32)data->slider.value);
+		sprintf(data->slider.label, "%d%%", (s32)data->slider.value);
 		break;
 	}
 	return 0;
@@ -1607,7 +1607,7 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 		0,
 		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
 		(uintptr_t)"Crosshair Edge Deadzone",
-		10,
+		100,
 		menuhandlerCrosshairEdgeBoundary,
 	},
 	{

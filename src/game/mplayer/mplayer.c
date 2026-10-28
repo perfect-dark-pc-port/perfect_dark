@@ -139,7 +139,7 @@ struct mpweapon g_MpWeapons[NUM_MPWEAPONS] = {
 	.extcontrols = true, \
 	.crosshaircolour = 0x00ff0028, \
 	.crosshairsize = 2, \
-	.crosshairedgeboundary = 0.7f, \
+	.crosshairedgeboundary = 0.60f, \
 	.crosshairhealth = CROSSHAIR_HEALTH_OFF, \
 	.usereloads = false, \
 }

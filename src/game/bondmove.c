@@ -469,6 +469,19 @@ static void bmoveApplyCrosshairSwivel(struct movedata *movedata, f32 mlookscale,
 }
 
 /**
+ * Calculate the joystick edge threshold for crosshair edge boundary
+ */
+static f32 bmoveCalculateJoyEdgeThreshold(void)
+{
+	f32 boundary = PLAYER_EXTCFG().crosshairedgeboundary;
+	if (boundary <= 0.6f) {
+		return boundary * 100.0f;  // 0-60% -> 0-60
+	} else {
+		return 60.0f + (boundary - 0.6f) * 170.0f;  // 60-100% -> 60-128
+	}
+}
+
+/**
  * Calculate the lookahead angle.
  *
  * The return value is the intended vertical angle to look at.
@@ -743,6 +756,7 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 	u32 stack;
 	f32 increment2;
 	f32 newverta;
+	f32 joy_edge_threshold;
 #ifndef PLATFORM_N64
 	const f32 mlookscale = g_Vars.lvupdate240 ? (4.f / (f32)g_Vars.lvupdate240) : 4.f;
 	const bool allowmlook = (g_Vars.currentplayernum == 0) && (allowc1x || allowc1y);
@@ -974,8 +988,10 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 					movedata.cannaturalpitch = !g_Vars.currentplayer->insightaimmode;
 
 					// Handle turning while aiming
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw > 60) {
-						movedata.speedvertadown = (movedata.c1stickyraw - 60) / 10.0f;
+					f32 joy_edge_threshold = bmoveCalculateJoyEdgeThreshold();
+
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw > joy_edge_threshold) {
+						movedata.speedvertadown = (movedata.c1stickyraw - joy_edge_threshold) / (127.0f - joy_edge_threshold);
 
 						if (movedata.speedvertadown > 1) {
 							movedata.speedvertadown = 1;
@@ -984,8 +1000,8 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 						movedata.speedvertadown = 0;
 					}
 
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw < -60) {
-						movedata.speedvertaup = (-60 - movedata.c1stickyraw) / 10.0f;
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw < -joy_edge_threshold) {
+						movedata.speedvertaup = (-joy_edge_threshold - movedata.c1stickyraw) / (127.0f - joy_edge_threshold);
 
 						if (movedata.speedvertaup > 1) {
 							movedata.speedvertaup = 1;
@@ -994,8 +1010,8 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 						movedata.speedvertaup = 0;
 					}
 
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw < -60) {
-						movedata.aimturnleftspeed = (-60 - movedata.c1stickxraw) / 10.0f;
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw < -joy_edge_threshold) {
+						movedata.aimturnleftspeed = (-joy_edge_threshold - movedata.c1stickxraw) / (127.0f - joy_edge_threshold);
 
 						if (movedata.aimturnleftspeed > 1) {
 							movedata.aimturnleftspeed = 1;
@@ -1004,8 +1020,8 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 						movedata.aimturnleftspeed = 0;
 					}
 
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw > 60) {
-						movedata.aimturnrightspeed = (movedata.c1stickxraw - 60) / 10.0f;
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw > joy_edge_threshold) {
+						movedata.aimturnrightspeed = (movedata.c1stickxraw - joy_edge_threshold) / (127.0f - joy_edge_threshold);
 
 						if (movedata.aimturnrightspeed > 1) {
 							movedata.aimturnrightspeed = 1;
@@ -1414,14 +1430,16 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 					}
 
 					// Handle looking up/down while aiming
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw > 60) {
-						movedata.speedvertadown = (movedata.c1stickyraw - 60) / 10.0f;
+					f32 joy_edge_threshold = bmoveCalculateJoyEdgeThreshold();
+
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw > joy_edge_threshold) {
+						movedata.speedvertadown = (movedata.c1stickyraw - joy_edge_threshold) / (127.0f - joy_edge_threshold);
 
 						if (movedata.speedvertadown > 1) {
 							movedata.speedvertadown = 1;
 						}
-					} else if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw < -60) {
-						movedata.speedvertaup = (-60 - movedata.c1stickyraw) / 10.0f;
+					} else if (g_Vars.currentplayer->insightaimmode && movedata.c1stickyraw < -joy_edge_threshold) {
+						movedata.speedvertaup = (-joy_edge_threshold - movedata.c1stickyraw) / (127.0f - joy_edge_threshold);
 
 						if (movedata.speedvertaup > 1) {
 							movedata.speedvertaup = 1;
@@ -1429,14 +1447,14 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 					}
 
 					// Handle looking left/right while aiming
-					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw < -60) {
-						movedata.aimturnleftspeed = (-60 - movedata.c1stickxraw) / 10.0f;
+					if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw < -joy_edge_threshold) {
+						movedata.aimturnleftspeed = (-joy_edge_threshold - movedata.c1stickxraw) / (127.0f - joy_edge_threshold);
 
 						if (movedata.aimturnleftspeed > 1) {
 							movedata.aimturnleftspeed = 1;
 						}
-					} else if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw > 60) {
-						movedata.aimturnrightspeed = (movedata.c1stickxraw - 60) / 10.0f;
+					} else if (g_Vars.currentplayer->insightaimmode && movedata.c1stickxraw > joy_edge_threshold) {
+						movedata.aimturnrightspeed = (movedata.c1stickxraw - joy_edge_threshold) / (127.0f - joy_edge_threshold);
 
 						if (movedata.aimturnrightspeed > 1) {
 							movedata.aimturnrightspeed = 1;
