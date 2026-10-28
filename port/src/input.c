@@ -76,6 +76,7 @@ static s32 numJoysticks = 0;
 
 static s32 useHIDAPI = 1;
 static s32 useRawInput = 0;
+static s32 usePositionalFaceButtonLayout = 1;
 
 static s32 mouseEnabled = 1;
 static s32 mouseX, mouseY;
@@ -718,6 +719,16 @@ s32 inputInit(void)
 		// old name for SDL_HINT_JOYSTICK_RAWINPUT_CORRELATE_XINPUT before SDL2.0.16
 		SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_CORRELATE_XINPUT, "1");
 #endif
+	}
+
+	if (usePositionalFaceButtonLayout) {
+		// when using positional layout: the Face Button layout will be based upon modern controller's button positions.
+		// enabled by default for the PC Port
+		SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0"); // uses positional face buttons (SOUTH/EAST/WEST/NORTH)
+	} else {
+		// when using specific controllers like Nintendo controllers: the Face Button layout will be based upon button labels.
+		// originally enabled by default as per SDL_Hints docs, but will be disabled for the PC Port
+		SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "1"); // uses button labels (A/B/X/Y)
 	}
 
 	if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC)) {
@@ -1523,6 +1534,7 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 	configRegisterInt("Input.FirstGamepadNum", &firstController, 0, 3);
 	configRegisterInt("Input.UseHIDAPI", &useHIDAPI, 0, 1);
 	configRegisterInt("Input.UseRawInput", &useRawInput, 0, 1);
+	configRegisterInt("Input.UsePositionalFaceButtonLayout", &usePositionalFaceButtonLayout, 0, 1);
 
 	char secname[] = "Input.Player1.Binds";
 	char keyname[256] = { 0 };
