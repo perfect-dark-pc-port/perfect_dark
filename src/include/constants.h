@@ -451,6 +451,7 @@
 #define CHEAT_AR53                   40
 #define CHEAT_RCP45                  41
 #define CHEAT_DUALWIELDALLGUNS       42
+#define CHEAT_ALLDOORSUNLOCKED       43
 
 #define CHEATFLAG_TIMED       0
 #define CHEATFLAG_ALWAYSON    1

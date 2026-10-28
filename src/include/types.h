@@ -2821,6 +2821,7 @@ struct player {
 #ifndef PLATFORM_N64
 	/*0x1c74*/ f32 swivelpos[2];
 #endif
+	/*0x1c78*/ bool alldoorsunlocked; // for the "All Doors Unlocked" cheat
 };
 
 struct ailist {

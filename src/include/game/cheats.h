@@ -11,6 +11,7 @@ extern struct menudialogdef g_CheatsSoloWeaponsMenuDialog;
 extern struct menudialogdef g_CheatsClassicWeaponsMenuDialog;
 extern struct menudialogdef g_CheatsWeaponsMenuDialog;
 extern struct menudialogdef g_CheatsBuddiesMenuDialog;
+extern struct menudialogdef g_ExtendedCheatsMenuDialog;
 
 u32 cheatIsUnlocked(s32 cheat_id);
 bool cheatIsActive(s32 cheat_id);
@@ -23,7 +24,7 @@ char *cheatGetMarquee(struct menuitem *item);
 s32 cheatGetByTimedStageIndex(s32 stage_index, s32 difficulty);
 s32 cheatGetByCompletedStageIndex(s32 stage_index);
 s32 cheatGetTime(s32 cheat_id);
-char *cheatGetName(s32 cheat_id);
+const char *cheatGetName(s32 cheat_id);
 MenuDialogHandlerResult cheatMenuHandleDialog(s32 operation, struct menudialogdef *dialogdef, union handlerdata *data);
 MenuItemHandlerResult cheatCheckboxMenuHandler(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult cheatMenuHandleBuddyCheckbox(s32 operation, struct menuitem *item, union handlerdata *data);

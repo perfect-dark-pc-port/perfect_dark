@@ -18930,32 +18930,36 @@ s32 hatGetType(struct prop *prop)
 
 bool doorIsUnlocked(struct prop *playerprop, struct prop *doorprop)
 {
-	struct doorobj *door = doorprop->door;
-	bool canopen = false;
-
-	if (door->keyflags == 0) {
-		canopen = true;
-	} else if (invHasKeyFlags(door->keyflags)) {
-		canopen = true;
+	if (cheatIsActive(CHEAT_ALLDOORSUNLOCKED)) {
+		return true;
 	} else {
-		if (posIsInFrontOfDoor(&playerprop->pos, door)) {
-			if ((door->base.flags2 & OBJFLAG2_LOCKEDBACK)
-					&& (door->base.flags2 & OBJFLAG2_LOCKEDFRONT) == 0) {
-				canopen = true;
-			}
+		struct doorobj *door = doorprop->door;
+		bool canopen = false;
+
+		if (door->keyflags == 0) {
+			canopen = true;
+		} else if (invHasKeyFlags(door->keyflags)) {
+			canopen = true;
 		} else {
-			if ((door->base.flags2 & OBJFLAG2_LOCKEDBACK) == 0
-					&& (door->base.flags2 & OBJFLAG2_LOCKEDFRONT)) {
-				canopen = true;
+			if (posIsInFrontOfDoor(&playerprop->pos, door)) {
+				if ((door->base.flags2 & OBJFLAG2_LOCKEDBACK)
+						&& (door->base.flags2 & OBJFLAG2_LOCKEDFRONT) == 0) {
+					canopen = true;
+				}
+			} else {
+				if ((door->base.flags2 & OBJFLAG2_LOCKEDBACK) == 0
+						&& (door->base.flags2 & OBJFLAG2_LOCKEDFRONT)) {
+					canopen = true;
+				}
 			}
 		}
-	}
 
-	if (!doorIsPadlockFree(door)) {
-		canopen = false;
-	}
+		if (!doorIsPadlockFree(door)) {
+			canopen = false;
+		}
 
-	return canopen;
+		return canopen;
+	}
 }
 
 bool doorIsPosInRange(struct doorobj *door, struct coord *pos, f32 distance, bool isbike)

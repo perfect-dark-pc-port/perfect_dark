@@ -6,6 +6,7 @@
 #include "platform.h"
 #include "data.h"
 #include "types.h"
+#include "game/cheats.h"
 #include "game/mainmenu.h"
 #include "game/menu.h"
 #include "game/gamefile.h"
@@ -1993,6 +1994,14 @@ struct menuitem g_ExtendedMenuItems[] = {
 		(uintptr_t)"Key Bindings\n",
 		0,
 		menuhandlerOpenBindsMenu,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_SELECTABLE_OPENSDIALOG | MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Cheats\n",
+		0,
+		(void *)&g_ExtendedCheatsMenuDialog,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,

@@ -102,8 +102,18 @@ struct cheat g_Cheats[] = {
 	{ L_MPWEAPONS_116, WEAPON_RCP45,      0,                             0,       CHEATFLAG_FIRINGRANGE                        }, // RC-P45
 #ifndef PLATFORM_N64
 	{ L_MPWEAPONS_215, 0,                 SOLOSTAGEINDEX_EXTRACTION,     DIFF_A,  CHEATFLAG_COMPLETION                         }, // Dual wield all guns
+	{ L_MPWEAPONS_073, 0,                 SOLOSTAGEINDEX_EXTRACTION,     DIFF_A,  CHEATFLAG_COMPLETION                         }, // All doors unlocked 
 #endif
+
 };
+
+// Lookup table for custom cheats added to the PC Port
+#ifndef PLATFORM_N64
+static const char *g_CustomCheatNames[] = {
+    [CHEAT_DUALWIELDALLGUNS] = "Dual Wield All Weapons\n",
+    [CHEAT_ALLDOORSUNLOCKED] = "All Doors Unlocked\n",
+};
+#endif
 
 u32 cheatIsUnlocked(s32 cheat_id)
 {
@@ -416,7 +426,7 @@ MenuItemHandlerResult cheatMenuHandleBuddyCheckbox(s32 operation, struct menuite
 char *cheatGetNameIfUnlocked(struct menuitem *item)
 {
 	if (cheatIsUnlocked(item->param)) {
-		return langGet(g_Cheats[item->param].nametextid);
+		return cheatGetName(item->param);
 	}
 
 	return langGet(L_MPWEAPONS_074); // "----------"
@@ -529,6 +539,8 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			&& g_Menus[g_MpPlayerNum].curdialog->focuseditem->type == MENUITEMTYPE_CHECKBOX) {
 		cheat_id = g_Menus[g_MpPlayerNum].curdialog->focuseditem->param;
 
+		strcpy(cheatname, cheatGetName(cheat_id));
+
 		if (g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog
 				&& g_Menus[g_MpPlayerNum].curdialog->focuseditem == &g_CheatsBuddiesMenuItems[0]) {
 			// Velvet
@@ -537,11 +549,10 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			// Show cheat name
 			sprintf(g_CheatMarqueeString, "%s %s\n",
 					g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog ? langGet(L_MPWEAPONS_143) : langGet(L_MPWEAPONS_136), // "Buddy Available", "Cheat available"
-					langGet(g_Cheats[cheat_id].nametextid)
+					cheatname
 			);
 		} else {
 			// Locked
-			strcpy(cheatname, langGet(g_Cheats[cheat_id].nametextid));
 			ptr = cheatname;
 
 			while (*ptr != '\n') {
@@ -612,6 +623,8 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			&& g_Menus[g_MpPlayerNum].curdialog->focuseditem->type == MENUITEMTYPE_CHECKBOX) {
 		cheat_id = g_Menus[g_MpPlayerNum].curdialog->focuseditem->param;
 
+		strcpy(cheatname, cheatGetName(cheat_id));
+
 		if (g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog
 				&& g_Menus[g_MpPlayerNum].curdialog->focuseditem == &g_CheatsBuddiesMenuItems[0]) {
 			// Velvet
@@ -620,11 +633,10 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			// Show cheat name
 			sprintf(g_CheatMarqueeString, "%s: %s\n",
 					g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog ? langGet(L_MPWEAPONS_143) : langGet(L_MPWEAPONS_136), // "Buddy Available", "Cheat available"
-					langGet(g_Cheats[cheat_id].nametextid)
+					cheatname
 			);
 		} else {
 			// Locked
-			strcpy(cheatname, langGet(g_Cheats[cheat_id].nametextid));
 			ptr = cheatname;
 
 			while (*ptr != '\n') {
@@ -691,6 +703,8 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			&& g_Menus[g_MpPlayerNum].curdialog->focuseditem->type == MENUITEMTYPE_CHECKBOX) {
 		cheat_id = g_Menus[g_MpPlayerNum].curdialog->focuseditem->param;
 
+		strcpy(cheatname, cheatGetName(cheat_id));
+
 		if (g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog
 				&& g_Menus[g_MpPlayerNum].curdialog->focuseditem == &g_CheatsBuddiesMenuItems[0]) {
 			// Velvet
@@ -699,11 +713,10 @@ char *cheatGetMarquee(struct menuitem *arg0)
 			// Show cheat name
 			sprintf(g_CheatMarqueeString, "%s: %s\n",
 					g_Menus[g_MpPlayerNum].curdialog->definition == &g_CheatsBuddiesMenuDialog ? langGet(L_MPWEAPONS_143) : langGet(L_MPWEAPONS_136), // "Buddy Available", "Cheat available"
-					langGet(g_Cheats[cheat_id].nametextid)
+					cheatname
 			);
 		} else {
 			// Locked
-			strcpy(cheatname, langGet(g_Cheats[cheat_id].nametextid));
 			ptr = cheatname;
 
 			while (*ptr != '\n') {
@@ -880,8 +893,14 @@ s32 cheatGetTime(s32 cheat_id)
 #endif
 
 #if VERSION >= VERSION_NTSC_1_0
-char *cheatGetName(s32 cheat_id)
+const char *cheatGetName(s32 cheat_id)
 {
+#ifndef PLATFORM_N64
+	// If the cheat's one of the custom cheats added to the PC port, look up the string literal directly
+    if (g_CustomCheatNames[cheat_id]) {
+        return g_CustomCheatNames[cheat_id];
+	}
+#endif
 	return langGet(g_Cheats[cheat_id].nametextid);
 }
 #endif
@@ -1117,16 +1136,6 @@ struct menuitem g_CheatsGameplayMenuItems[] = {
 		0,
 		cheatCheckboxMenuHandler,
 	},
-#ifndef PLATFORM_N64
-	{
-		MENUITEMTYPE_CHECKBOX,
-		CHEAT_DUALWIELDALLGUNS,
-		0,
-		(uintptr_t)&cheatGetNameIfUnlocked,
-		0,
-		cheatCheckboxMenuHandler,
-	},
-#endif
 	{
 		MENUITEMTYPE_SEPARATOR,
 		0,
@@ -1580,6 +1589,69 @@ struct menudialogdef g_CheatsBuddiesMenuDialog = {
 	g_CheatsBuddiesMenuItems,
 	cheatMenuHandleDialog,
 	0,
+	NULL,
+};
+
+struct menuitem g_ExtendedCheatsMenuItems[] = {
+#ifndef PLATFORM_N64
+	{
+		MENUITEMTYPE_CHECKBOX,
+		CHEAT_DUALWIELDALLGUNS,
+		0,
+		(uintptr_t)&cheatGetNameIfUnlocked,
+		0,
+		cheatCheckboxMenuHandler,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		CHEAT_ALLDOORSUNLOCKED,
+		0,
+		(uintptr_t)&cheatGetNameIfUnlocked,
+		0,
+		cheatCheckboxMenuHandler,
+	},
+#endif
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0x00000096,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_MARQUEE,
+		0,
+		MENUITEMFLAG_SMALLFONT | MENUITEMFLAG_MARQUEE_FADEBOTHSIDES,
+		(uintptr_t)&cheatGetMarquee,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0x00000096,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_SELECTABLE_CLOSESDIALOG | MENUITEMFLAG_SELECTABLE_CENTRE,
+		L_MPMENU_477, // "Done"
+		0,
+		NULL,
+	},
+	{ MENUITEMTYPE_END },
+};
+
+struct menudialogdef g_ExtendedCheatsMenuDialog = {
+	MENUDIALOGTYPE_DEFAULT,
+	(uintptr_t)"Extended Cheats",
+	g_ExtendedCheatsMenuItems,
+	NULL,
+	MENUDIALOGFLAG_LITERAL_TEXT,
 	NULL,
 };
 
