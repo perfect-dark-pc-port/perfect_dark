@@ -121,6 +121,12 @@ enum mouselockmode {
 	MLOCK_AUTO = 2
 };
 
+enum ConfirmCancelButtonSwap {
+	CONFIRMCANCEL_SWAP_AUTO = -1, // auto-detect based on controller type
+	CONFIRMCANCEL_SWAP_OFF = 0,  // use standard button layout
+	CONFIRMCANCEL_SWAP_ON = 1,   // use japanese button layout
+};
+
 // returns bitmask of connected controllers or -1 if failed
 s32 inputInit(void);
 
@@ -180,6 +186,9 @@ s32 inputKeyJustPressed(u32 vk);
 
 // idx is controller index, contbtn is one of the CONT_ constants
 s32 inputButtonPressed(s32 idx, u32 contbtn);
+
+// Remaps UI button for a controller (handles Confirm/Cancel Face Button swap)
+u32 inputConfirmCancelButtonSwap(int cidx, u32 button);
 
 // bind virtkey vk to n64 pad #idx's button/axis ck as represented by its contkey value
 // if bind is -1, picks a bind slot automatically

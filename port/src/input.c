@@ -11,6 +11,7 @@
 #include "utils.h"
 #include "system.h"
 #include "fs.h"
+#include "constants.h"
 
 #if !SDL_VERSION_ATLEAST(2, 0, 14)
 // this was added in 2.0.14
@@ -46,6 +47,7 @@ static SDL_GameController *pads[INPUT_MAX_CONTROLLERS];
 	.swapSticks = 1, \
 	.deviceIndex = -1, \
 	.cancelCButtons = 0, \
+	.swapAcceptCancelButtons = -1, \
 }
 
 static struct controllercfg {
@@ -58,6 +60,7 @@ static struct controllercfg {
 	s32 swapSticks;
 	s32 deviceIndex;
 	s32 cancelCButtons;
+	s32 swapAcceptCancelButtons;
 } padsCfg[INPUT_MAX_CONTROLLERS] = {
 	CONTROLLERCFG_DEFAULT,
 	CONTROLLERCFG_DEFAULT,
@@ -348,6 +351,51 @@ static inline void inputInitController(const s32 cidx, const s32 jidx)
 		SDL_JoystickGetGUIDString(guid, guidStr, sizeof(guidStr));
 		sysLogPrintf(LOG_NOTE, "input: GUID for controller %d: %s", jidx, guidStr);
 	}
+}
+
+static int inputIsNintendoSwitchController(SDL_GameController *controller) {
+#if SDL_VERSION_ATLEAST(2, 0, 12)
+	switch (SDL_GameControllerGetType(controller)) {
+		case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_PRO:
+#if SDL_VERSION_ATLEAST(2, 24, 0)
+		case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+		case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+		case SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+#endif
+			return 1;
+		default:
+			break;
+	}
+#endif
+
+	return 0;
+}
+
+static int inputConfirmCancelSwapActive(int cidx)
+{
+	if (cidx < 0 || cidx >= INPUT_MAX_CONTROLLERS) {
+		return 0;
+	}
+
+	switch (padsCfg[cidx].swapAcceptCancelButtons) {
+		case CONFIRMCANCEL_SWAP_ON:
+			return 1;
+		case CONFIRMCANCEL_SWAP_OFF:
+			return 0;
+		case CONFIRMCANCEL_SWAP_AUTO:
+		default:
+			// Nintendo controllers uses BAYX Layout (B=A, A=B)
+			return pads[cidx] && inputIsNintendoSwitchController(pads[cidx]);
+	}
+}
+
+u32 inputConfirmCancelButtonSwap(int cidx, u32 button)
+{
+	if (inputConfirmCancelSwapActive(cidx)) {
+		if (button == BUTTON_UI_ACCEPT) return BUTTON_UI_CANCEL;
+		if (button == BUTTON_UI_CANCEL) return BUTTON_UI_ACCEPT;
+	}
+	return button;
 }
 
 static inline void inputCloseController(const s32 cidx)
@@ -764,9 +812,14 @@ s32 inputInit(void)
 
 static inline s32 inputBindPressed(const s32 idx, const u32 ck)
 {
+	u32 swapped_ck = ck;
+	if (inputConfirmCancelButtonSwap(idx, ck)) {
+		if (ck == CK_A) swapped_ck = CK_B;
+		else if (ck == CK_B) swapped_ck = CK_A;
+	}
 	for (s32 i = 0; i < INPUT_MAX_BINDS; ++i) {
-		if (binds[idx][ck][i]) {
-			if (inputKeyPressed(binds[idx][ck][i])) {
+		if (binds[idx][swapped_ck][i]) {
+			if (inputKeyPressed(binds[idx][swapped_ck][i])) {
 				return 1;
 			}
 		}
@@ -1542,6 +1595,7 @@ PD_CONSTRUCTOR static void inputConfigInit(void)
 		configRegisterInt(strFmt("%s.CancelCButtons", secname), &padsCfg[c].cancelCButtons, 0, 1);
 		configRegisterInt(strFmt("%s.SwapSticks", secname), &padsCfg[c].swapSticks, 0, 1);
 		configRegisterInt(strFmt("%s.ControllerIndex", secname), &padsCfg[c].deviceIndex, -1, 0x7FFFFFFF);
+		configRegisterInt(strFmt("%s.swapAcceptCancelButtons", secname), &padsCfg[c].swapAcceptCancelButtons, CONFIRMCANCEL_SWAP_AUTO, CONFIRMCANCEL_SWAP_ON);
 		secname[13] = '.';
 		for (u32 ck = 0; ck < CK_TOTAL_COUNT; ++ck) {
 			snprintf(keyname, sizeof(keyname), "%s.%s", secname, inputGetContKeyName(ck));

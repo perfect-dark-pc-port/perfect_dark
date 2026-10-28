@@ -1828,6 +1828,32 @@ struct menuitem g_ExtendedBindsMenuItems[] = {
 	{ MENUITEMTYPE_END },
 };
 
+static s32 menuSwapConfirmCancel(s32 key, u32 bindKey)
+{
+	// Only swap for CK_ACCEPT/CK_CANCEL
+	if ((bindKey != CK_ACCEPT && bindKey != CK_CANCEL) ||
+		key < VK_JOY_BEGIN || key >= VK_TOTAL_COUNT) {
+		return key;
+	}
+
+	// Check which controller this key belongs to
+	s32 controllerIdx = (key - VK_JOY_BEGIN) / INPUT_MAX_CONTROLLER_BUTTONS;
+	
+	// Check if swap is NOT active for this controller
+	if (inputConfirmCancelButtonSwap(controllerIdx, BUTTON_UI_ACCEPT) == BUTTON_UI_ACCEPT) {
+		return key;
+	}
+
+	s32 buttonIdx = (key - VK_JOY_BEGIN) % INPUT_MAX_CONTROLLER_BUTTONS;
+	if (buttonIdx == 0) {
+		return key + 1; 
+	} else if (buttonIdx == 1) {
+		return key - 1;
+	}
+	
+	return key;
+}
+
 static MenuItemHandlerResult menuhandlerDoBind(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (!menuIsDialogOpen(&g_ExtendedBindKeyMenuDialog)) {
@@ -1840,8 +1866,13 @@ static MenuItemHandlerResult menuhandlerDoBind(s32 operation, struct menuitem *i
 	}
 
 	const s32 key = inputGetLastKey();
-	if (key && key != VK_ESCAPE) {
-		inputKeyBind(g_ExtMenuPlayer, g_BindContKey, g_BindIndex, (key == VK_DELETE ? 0 : key));
+	if (key && key != VK_DELETE && key != VK_ESCAPE) {
+		s32 adjustedKey = menuSwapConfirmCancel(key, g_BindContKey);
+		
+		inputKeyBind(g_ExtMenuPlayer, g_BindContKey, g_BindIndex, adjustedKey);
+		menuPopDialog();
+	} else if (key == VK_DELETE) {
+		inputKeyBind(g_ExtMenuPlayer, g_BindContKey, g_BindIndex, 0);
 		menuPopDialog();
 	}
 
@@ -1850,9 +1881,12 @@ static MenuItemHandlerResult menuhandlerDoBind(s32 operation, struct menuitem *i
 
 static const char *menutextBind(struct menuitem *item)
 {
-	return g_PlayerExtCfg[g_ExtMenuPlayer].extcontrols ?
-		menuBinds[item - g_ExtendedBindsMenuItems].name :
-		menuBinds[item - g_ExtendedBindsMenuItems].n64name;
+    int idx = item - g_ExtendedBindsMenuItems;
+    u32 ck = menuBinds[idx].ck;
+
+    return g_PlayerExtCfg[g_ExtMenuPlayer].extcontrols ?
+        menuBinds[idx].name :
+        menuBinds[idx].n64name;
 }
 
 static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *item, union handlerdata *data)
@@ -1869,6 +1903,8 @@ static MenuItemHandlerResult menuhandlerBind(s32 operation, struct menuitem *ite
 	case MENUOP_GETOPTIONTEXT:
 		binds = inputKeyGetBinds(g_ExtMenuPlayer, menuBinds[idx].ck);
 		if (binds && binds[data->dropdown.value]) {
+			s32 displayKey = menuSwapConfirmCancel(binds[data->dropdown.value], menuBinds[idx].ck);
+			
 			strncpy(keyname, inputGetKeyName(binds[data->dropdown.value]), sizeof(keyname) - 1);
 			for (char *p = keyname; *p; ++p) {
 				if (*p == '_') *p = ' ';
