@@ -321,7 +321,7 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Mouse Speed X",
 		3000,
 		menuhandlerMouseSpeedX,
@@ -329,7 +329,7 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Mouse Speed Y",
 		3000,
 		menuhandlerMouseSpeedY,
@@ -337,7 +337,7 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Crosshair Speed X",
 		1000,
 		menuhandlerMouseAimSpeedX,
@@ -345,7 +345,7 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Crosshair Speed Y",
 		1000,
 		menuhandlerMouseAimSpeedY,
@@ -353,7 +353,7 @@ struct menuitem g_ExtendedMouseMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Radial Menu Speed",
 		1000,
 		menuhandlerRadialMenuSpeed,
@@ -1096,7 +1096,7 @@ struct menuitem g_ExtendedVideoMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_DEFERRED,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE | MENUITEMFLAG_SLIDER_DEFERRED | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Framerate Limit",
 		VIDEO_MAX_FPS,
 		menuhandlerFramerateLimit,
@@ -1589,7 +1589,7 @@ struct menuitem g_ExtendedGameMenuItems[] = {
 	{
 		MENUITEMTYPE_SLIDER,
 		0,
-		MENUITEMFLAG_LITERAL_TEXT,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_SLOW,
 		(uintptr_t)"Vert FOV",
 		170,
 		menuhandlerFieldOfView,

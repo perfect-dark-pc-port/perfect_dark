@@ -4991,8 +4991,10 @@ void menuProcessInput(void)
 				xhelddir = menu->xrepeatdir;
 			}
 
-			// If held for 1 second, repeat faster
-			if (menu->xrepeattimer60 > TICKS(60)) {
+			// If held long enough, repeat faster (2s for SLIDER_SLOW, 1s otherwise)
+			if (menu->xrepeattimer60 > (dialog && dialog->focuseditem
+					&& (dialog->focuseditem->type == MENUITEMTYPE_SLIDER || dialog->focuseditem->type == MENUITEMTYPE_10)
+					&& (dialog->focuseditem->flags & MENUITEMFLAG_SLIDER_SLOW) ? TICKS(120) : TICKS(60))) {
 				menu->xrepeatmode = MENUREPEATMODE_FAST;
 			}
 

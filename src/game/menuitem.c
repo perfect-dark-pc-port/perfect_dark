@@ -2646,10 +2646,26 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 			} else {
 				f0 = data->slider.multiplier / 1000.0f;
 				f0 = f0 * 100.0f / item->param3;
+				f32 inputHeld;
+				if (item->flags & MENUITEMFLAG_SLIDER_SLOW) {
+					s32 holdTime = g_Menus[g_MpPlayerNum].xrepeattimer60;
+					f32 scale;
+					if (holdTime > TICKS(840)) {
+						scale = 0.1f;  // 14s+: faster
+					} else if (holdTime > TICKS(300)) {
+						scale = 0.8f;  // 5-14s: medium
+					} else {
+						scale = 0.05f; // 0-5s: slow
+					}
+					inputHeld = inputs->leftrightheld * scale;
+				} else {
+					inputHeld = inputs->leftrightheld;
+				}
+
 #if VERSION >= VERSION_PAL_BETA
-				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60freal;
+				f0 = f0 + inputHeld * g_Vars.diffframe60freal;
 #else
-				f0 = f0 + inputs->leftrightheld * g_Vars.diffframe60;
+				f0 = f0 + inputHeld * g_Vars.diffframe60;
 #endif
 				f0 = item->param3 * f0 / 100.0f;
 
@@ -2668,7 +2684,10 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 				f2 = f14;
 			}
 
-			if ((item->flags & MENUITEMFLAG_SLIDER_FAST) == 0 && f2 < 40) {
+			// Threshold for ramping: 40 for normal, 82 for SLIDER_SLOW
+			s32 threshold = (item->flags & MENUITEMFLAG_SLIDER_SLOW) ? 82 : 40;
+
+			if ((item->flags & MENUITEMFLAG_SLIDER_FAST) == 0 && f2 < threshold) {
 				if (g_Menus[g_MpPlayerNum].xrepeatmode != MENUREPEATMODE_SLOW) {
 					index = index + inputs->leftright;
 				}
@@ -2682,8 +2701,9 @@ bool menuitemSliderTick(struct menuitem *item, struct menudialog *dialog, struct
 					f2 = f14;
 				}
 
-				if (f2 > 20) {
-					f2 = (f2 - 20) / 16.0f;
+				if (f2 > threshold) {
+					f32 divisor = (item->flags & MENUITEMFLAG_SLIDER_SLOW) ? 40.0f : 16.0f;
+					f2 = (f2 - threshold) / divisor;
 #if VERSION >= VERSION_PAL_BETA
 					f2 *= g_Vars.diffframe60freal;
 #else
