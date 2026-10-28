@@ -11,6 +11,7 @@
 #include "utils.h"
 #include "system.h"
 #include "fs.h"
+#include "data.h"
 
 #if !SDL_VERSION_ATLEAST(2, 0, 14)
 // this was added in 2.0.14
@@ -1285,6 +1286,29 @@ void inputMouseSetSpeed(f32 x, f32 y)
 {
 	mouseSensX = x;
 	mouseSensY = y;
+}
+
+void inputMouseGetScaledDeltaCrosshair(f32* dx, f32* dy)
+{
+	f32 mdx = 0.f, mdy = 0.f;
+	if (mouseLocked) {
+		mdx = mouseDX;
+		mdy = mouseDY;
+	}
+	if (dx) *dx = mdx;
+	if (dy) *dy = mdy;
+}
+
+void inputMouseGetAimSpeed(f32* x, f32* y)
+{
+	if (x) *x = g_PlayerExtCfg[0].mouseaimspeedx;
+	if (y) *y = g_PlayerExtCfg[0].mouseaimspeedy;
+}
+
+void inputMouseSetAimSpeed(f32 x, f32 y)
+{
+	g_PlayerExtCfg[0].mouseaimspeedx = x;
+	g_PlayerExtCfg[0].mouseaimspeedy = y;
 }
 
 s32 inputMouseIsEnabled(void)

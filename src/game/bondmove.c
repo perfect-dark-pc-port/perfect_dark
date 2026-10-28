@@ -437,6 +437,27 @@ void bmoveUpdateSpeedThetaControl(f32 value)
 }
 
 /**
+ * Apply crosshair movement with scaling and clamping
+ */
+static void bmoveApplyCrosshairAimingMovement(f32 aimspeedx, f32 aimspeedy, f32 dx, f32 dy)
+{
+	// Resolution/Aspect Ratio-based scaling coefficients
+	const f32 xscale = (aimspeedx * 320.f / 1080.f) / g_Vars.currentplayer->aspect;
+	const f32 yscale = aimspeedy * 240.f / 1080.f;
+
+	// Calculate new positions with input directly
+	const f32 x = g_Vars.currentplayer->swivelpos[0] + (dx * xscale);
+	const f32 y = g_Vars.currentplayer->swivelpos[1] + (dy * yscale);
+	
+	// Clamping
+	g_Vars.currentplayer->swivelpos[0] = (x < -1.f) ? -1.f : (x > 1.f) ? 1.f : x;
+	g_Vars.currentplayer->swivelpos[1] = (y < -1.f) ? -1.f : (y > 1.f) ? 1.f : y;
+
+	// Applying to gun swivel system
+	bgunSwivelWithDamp(g_Vars.currentplayer->swivelpos[0], g_Vars.currentplayer->swivelpos[1], 0.01f);
+}
+
+/**
  * Apply crosshair swivel based on camera movement with input detection
  */
 static void bmoveApplyCrosshairSwivel(struct movedata *movedata, f32 mlookscale, f32 *x, f32 *y)
@@ -805,9 +826,11 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 
 #ifndef PLATFORM_N64
 	if (allowmlook) {
+		s32 mousedx, mousedy;
 		inputMouseGetScaledDelta(&movedata.freelookdx, &movedata.freelookdy);
+		inputMouseGetRawDelta(&mousedx, &mousedy);
 		allowmcross = (PLAYER_EXTCFG().mouseaimmode == MOUSEAIM_CLASSIC) &&
-			(movedata.freelookdx || movedata.freelookdy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
+			(mousedx || mousedy || g_Vars.currentplayer->swivelpos[0] || g_Vars.currentplayer->swivelpos[1]);
 		if (movedata.invertpitch) {
 			movedata.freelookdy = -movedata.freelookdy;
 		}
@@ -2229,21 +2252,16 @@ void bmoveProcessInput(bool allowc1x, bool allowc1y, bool allowc1buttons, bool i
 		// when holding aim and moving stick
 		bgunSetAimType(0);
 #ifndef PLATFORM_N64
-		if (allowmcross) {
-			// joystick is inactive, move crosshair using the mouse
-			const f32 xcoeff = 320.f / 1080.f;
-			const f32 ycoeff = 240.f / 1080.f;
-			const f32 xscale = (PLAYER_EXTCFG().mouseaimspeedx * xcoeff) / g_Vars.currentplayer->aspect;
-			const f32 yscale = PLAYER_EXTCFG().mouseaimspeedy * ycoeff;
-			f32 x = g_Vars.currentplayer->swivelpos[0] + movedata.freelookdx * xscale;
-			f32 y = g_Vars.currentplayer->swivelpos[1] + movedata.freelookdy * yscale;
-			x = (x < -1.f) ? -1.f : ((x > 1.f) ? 1.f : x);
-			y = (y < -1.f) ? -1.f : ((y > 1.f) ? 1.f : y);
-			g_Vars.currentplayer->swivelpos[0] = x;
-			g_Vars.currentplayer->swivelpos[1] = y;
-			bgunSwivelWithDamp(x, y, 0.01f);
-			return;
-		}
+        if (allowmcross) {
+            // joystick is inactive, move crosshair using the mouse
+            f32 dx, dy;
+            inputMouseGetScaledDeltaCrosshair(&dx, &dy);
+            dx *= (0.022f / 90.0f) * PLAYER_EXTCFG().mouseaimspeedx;
+            dy *= (0.022f / 90.0f) * PLAYER_EXTCFG().mouseaimspeedy;
+            const f32 norm = g_Vars.lvupdate60freal;
+            bmoveApplyCrosshairAimingMovement(PLAYER_EXTCFG().mouseaimspeedx, PLAYER_EXTCFG().mouseaimspeedy, dx, dy);
+            return;
+        }
 #endif
 		bgunSwivelWithoutDamp((movedata.c1stickxraw * 0.65f) / 80.0f, (movedata.c1stickyraw * 0.65f) / 80.0f);
 	}
