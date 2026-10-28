@@ -103,8 +103,8 @@ enum contkey {
 	CK_ACCEPT,
 	CK_CANCEL,
 	CK_0040,
-	CK_0080,
-	CK_0100,
+	CK_0080, // Gyro Modifier action
+	CK_0100, // Gyro Calibration (Manual) action
 	CK_0200,
 	CK_0400,
 	CK_0800,
@@ -119,6 +119,47 @@ enum mouselockmode {
 	MLOCK_OFF = 0,
 	MLOCK_ON = 1,
 	MLOCK_AUTO = 2
+};
+
+enum gyroactivation {
+	GYRO_ALWAYS_ON = 0,     // Gyro is always enabled
+	GYRO_TOGGLE = 1,        // Gyro is enabled/disabled by a button press
+	GYRO_ENABLE_HELD = 2,   // Gyro is enabled while a button is held down
+	GYRO_DISABLE_HELD = 3   // Gyro is disabled while a button is held down
+};
+
+enum gyroaxismode {
+	GYRO_YAW = 0,           // Gyro controls yaw axis (turn)
+	GYRO_ROLL = 1,          // Gyro controls roll axis (lean)
+	GYRO_LOCAL = 2,         // Gyro controls local space orientation
+	GYRO_PLAYER = 3,        // Gyro controls player space orientation
+	GYRO_WORLD = 4          // Gyro controls world space orientation
+};
+
+enum gyroaimmode {
+	GYRO_AIM_CAMERA = 0,    // Gyro controls camera movement
+	GYRO_AIM_CROSSHAIR = 1, // Gyro controls crosshair movement
+	GYRO_AIM_BOTH = 2       // Gyro controls both camera and crosshair movement
+};
+
+typedef enum {
+	GYRO_CALIB_START,       // Start gyro calibration
+	GYRO_CALIB_FINISH,      // Finish gyro calibration
+	GYRO_CALIB_RESET,       // Reset gyro calibration
+	GYRO_CALIB_QUERY,       // Query gyro calibration status
+	GYRO_CALIB_AUTO         // Automatic gyro calibration
+} GyroCalibrationOp;
+
+typedef enum {
+	CALIBRATIONMODE_MANUAL = 0,       // Manual calibration mode
+	CALIBRATIONMODE_STILLNESS = 1,    // Stillness calibration mode
+	CALIBRATIONMODE_SENSORFUSION = 2  // Sensor fusion calibration mode
+} CalibrationMode;
+
+enum gyroautocalibration {
+	GYRO_AUTOCALIBRATION_OFF = 0,         // Disables Auto-Calibration
+	GYRO_AUTOCALIBRATION_MENU_ONLY = 1,   // Enables Auto-Calibration only when a menu dialog is opened
+	GYRO_AUTOCALIBRATION_ALWAYS = 2       // Enables continuous Auto-Calibration whenever possible.
 };
 
 // returns bitmask of connected controllers or -1 if failed
@@ -181,6 +222,9 @@ s32 inputKeyJustPressed(u32 vk);
 // idx is controller index, contbtn is one of the CONT_ constants
 s32 inputButtonPressed(s32 idx, u32 contbtn);
 
+// idx is controller index, ck is one of the CK_ constants
+s32 inputBindPressed(s32 idx, u32 ck);
+
 // bind virtkey vk to n64 pad #idx's button/axis ck as represented by its contkey value
 // if bind is -1, picks a bind slot automatically
 void inputKeyBind(s32 idx, u32 ck, s32 bind, u32 vk);
@@ -231,6 +275,78 @@ void inputMouseSetSpeed(f32 x, f32 y);
 
 s32 inputMouseIsEnabled(void);
 void inputMouseEnable(s32 enabled);
+
+// Updates the gyro data for the specified controller index
+void inputUpdateGyro(s32 cidx);
+
+// Scaled Gyro Movement Retrieval
+void inputGyroGetScaledDelta(s32 cidx, f32* dx, f32* dy, f32* dz);
+void inputGyroGetScaledDeltaCrosshair(s32 cidx, f32* dx, f32* dy);
+
+// Raw Gyro Movement Retrieval
+void inputGyroGetRawDelta(s32 cidx, s32* dx, s32* dy, s32* dz);
+
+// Motion Sensor detection
+// returns 1 if the controller has motion sensors, 0 otherwise disables Gyro Aiming functionality for the controller.
+s32 inputControllerMotionSensorsSupported(s32 cidx);
+
+// Gyro Enable/Disable
+s32 inputGyroIsEnabled(s32 cidx);
+void inputGyroEnable(s32 cidx, s32 enabled);
+
+// Gyro Aim Mode Management
+void inputSetGyroAimMode(s32 cidx, s32 mode);
+s32 inputGetGyroAimMode(s32 cidx);
+
+// Gyro Modifier Management
+void inputSetGyroModifier(s32 cidx, s32 mode);
+s32 inputGetGyroModifier(s32 cidx);
+
+// Gyro Axis Mode Management
+void inputGyroSetAxisMode(s32 cidx, s32 mode);
+s32 inputGyroGetAxisMode(s32 cidx);
+
+// Gyro Speed Management
+void inputGyroGetSpeed(s32 cidx, f32* sensX, f32* sensY);
+void inputGyroSetSpeed(s32 cidx, f32 sensX, f32 sensY);
+void inputGyroGetAimSpeed(s32 cidx, f32* sensX, f32* sensY);
+void inputGyroSetAimSpeed(s32 cidx, f32 sensX, f32 sensY);
+
+// Gyro Advanced Mode Management
+s32 inputGyroGetAdvanced(s32 cidx);
+void inputGyroSetAdvanced(s32 cidx, s32 advanced);
+
+// Gyro Invert Management
+void inputGyroGetInvert(s32 cidx, s32* invertx, s32* inverty);
+void inputGyroSetInvert(s32 cidx, s32 invertx, s32 inverty);
+void inputGyroGetAimInvert(s32 cidx, s32* invertx, s32* inverty);
+void inputGyroSetAimInvert(s32 cidx, s32 invertx, s32 inverty);
+
+// Gyro X/Y Ratio Mixer Management
+f32 inputGetGyroVHMixer(s32 cidx);
+void inputSetGyroVHMixer(s32 cidx, f32 value);
+
+// Gyro Smoothing Management
+f32 inputGetGyroSmoothing(s32 cidx);
+void inputSetGyroSmoothing(s32 cidx, f32 value);
+
+// Gyro Tightening Management
+f32 inputGyroGetTightening(s32 cidx);
+void inputGyroSetTightening(s32 cidx, f32 value);
+
+// Gyro Calibration Management
+void inputGyroCalibration(s32 cidx, GyroCalibrationOp op, float* out_confidence, int* out_steady);
+
+// Gyro Auto Calibration
+s32 inputGyroGetAutoCalibration(s32 cidx);
+void inputGyroSetAutoCalibration(s32 cidx, s32 enabled);
+
+// Gyro Manual Calibration
+s32 inputGyroGetManualCalibration(s32 cidx);
+void inputGyroSetManualCalibration(s32 cidx);
+
+// Ensures CK_0100 (Manual Calibration bind) is blocked during menu-driven gyro calibration
+s32 inputIsMenuGyroCalibrationActive(s32 cidx);
 
 // call this every frame
 void inputUpdate(void);

@@ -5100,6 +5100,8 @@ struct movedata {
 	/*0xac*/ s32 alt1tapcount;
 	/*    */ f32 freelookdx; // how much the mouse moved ...
 	/*    */ f32 freelookdy; // ... scaled by sensitivity
+	/*    */ f32 gyrolookdx; // how much the gyro moved ...
+	/*    */ f32 gyrolookdy; // ... scaled by sensitivity
 	/*    */ f32 analoglean; // how much we're trying to lean
 #endif
 
@@ -6159,6 +6161,9 @@ struct extplayerconfig {
 	s32 mouseaimmode;
 	f32 mouseaimspeedx;
 	f32 mouseaimspeedy;
+	s32 gyroaimmode;
+	f32 gyroaimspeedx;
+	f32 gyroaimspeedy;
 	s32 crouchmode;
 	f32 radialmenuspeed;
 	f32 crosshairsway;

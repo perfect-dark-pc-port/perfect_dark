@@ -4751,6 +4751,9 @@ enum weaponnum {
 #define CROUCHMODE_TOGGLE 2 // press the crouch buttons to toggle stance
 #define CROUCHMODE_TOGGLE_ANALOG (CROUCHMODE_ANALOG | CROUCHMODE_TOGGLE)
 
+#define GYRO_MODIFIER         CK_0080 // press/hold or toggle gyro activation
+#define GYRO_CALIBRATION      CK_0100 // calibrate gyro manually
+
 #define CROSSHAIR_HEALTH_OFF 0
 #define CROSSHAIR_HEALTH_ON_GREEN 1
 #define CROSSHAIR_HEALTH_ON_WHITE 2

@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <SDL.h>
 #include <PR/ultratypes.h>
 #include "platform.h"
 #include "data.h"
@@ -17,6 +18,9 @@
 
 static s32 g_ExtMenuPlayer = 0;
 static struct menudialogdef *g_ExtNextDialog = NULL;
+static s32 g_GyroCalibrationState[INPUT_MAX_CONTROLLERS] = {0};
+static u32 g_GyroCalibrationStartTime[INPUT_MAX_CONTROLLERS] = {0};
+static bool g_GyroCalibrationComplete[INPUT_MAX_CONTROLLERS] = {0};
 
 static s32 g_BindIndex = 0;
 static u32 g_BindContKey = 0;
@@ -93,6 +97,16 @@ static MenuItemHandlerResult menuhandlerSelectPlayer(s32 operation, struct menui
 	}
 
 	return 0;
+}
+
+// Check if menu-driven gyro calibration is active for a player
+s32 inputIsMenuGyroCalibrationActive(s32 cidx)
+{
+	if (cidx < 0 || cidx >= INPUT_MAX_CONTROLLERS) {
+		return 0;
+	}
+
+	return (g_GyroCalibrationState[cidx] == 1) ? 1 : 0;
 }
 
 static MenuItemHandlerResult menuhandlerMouseEnabled(s32 operation, struct menuitem *item, union handlerdata *data)
@@ -572,6 +586,688 @@ static MenuItemHandlerResult menuhandlerSwapSticks(s32 operation, struct menuite
 	return 0;
 }
 
+static MenuItemHandlerResult menuhandlerGyroEnabled(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+	switch (operation) {
+	case MENUOP_GET:
+		return inputGyroIsEnabled(g_ExtMenuPlayer);
+	case MENUOP_SET:
+		inputGyroEnable(g_ExtMenuPlayer, data->checkbox.value);
+		break;
+	}
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAimMode(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+	static const char* opts[] = {
+		"Camera only",
+		"Crosshair only",
+		"Camera & Crosshair"
+	};
+
+	switch (operation) {
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(opts);
+		break;
+	case MENUOP_GETOPTIONTEXT:
+		return (intptr_t)opts[data->dropdown.value];
+	case MENUOP_SET:
+		inputSetGyroAimMode(g_ExtMenuPlayer, data->dropdown.value);
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		data->dropdown.value = inputGetGyroAimMode(g_ExtMenuPlayer);
+	}
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroModifier(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+	static const char* opts[] = {
+		"Always On",
+		"Toggle",
+		"Enable while Held",
+		"Disable while Held"
+	};
+
+	switch (operation) {
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(opts);
+		break;
+	case MENUOP_GETOPTIONTEXT:
+		return (intptr_t)opts[data->dropdown.value];
+	case MENUOP_SET:
+		inputSetGyroModifier(g_ExtMenuPlayer, data->dropdown.value);
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		data->dropdown.value = inputGetGyroModifier(g_ExtMenuPlayer);
+	}
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAxisMode(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    static const char* opts[] = {
+        "Yaw",
+        "Roll",
+        "Local Space",
+        "Player Space",
+        "World Space"
+    };
+
+    switch (operation) {
+    case MENUOP_GETOPTIONCOUNT:
+        data->dropdown.value = ARRAYCOUNT(opts);
+        break;
+    case MENUOP_GETOPTIONTEXT:
+        return (intptr_t)opts[data->dropdown.value];
+    case MENUOP_SET:
+        inputGyroSetAxisMode(g_ExtMenuPlayer, data->dropdown.value);
+        break;
+    case MENUOP_GETSELECTEDINDEX:
+        data->dropdown.value = inputGyroGetAxisMode(g_ExtMenuPlayer);
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAdvanced(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    switch (operation) {
+    case MENUOP_GET:
+        return inputGyroGetAdvanced(g_ExtMenuPlayer);
+    case MENUOP_SET:
+        inputGyroSetAdvanced(g_ExtMenuPlayer, data->checkbox.value);
+        // When disabling Advanced mode, sync Y to X so unified slider works correctly
+        if (!data->checkbox.value) {
+            f32 sensX, aimSensX;
+            inputGyroGetSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            inputGyroSetSpeed(g_ExtMenuPlayer, sensX, sensX);
+            inputGyroGetAimSpeed(g_ExtMenuPlayer, &aimSensX, NULL);
+            inputGyroSetAimSpeed(g_ExtMenuPlayer, aimSensX, aimSensX);
+        }
+        break;
+    }
+    return 0;
+}
+
+
+static MenuItemHandlerResult menuhandlerGyroSensitivity(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    f32 sensX, sensY;
+    s32 axis = item->param; // 0 = unified, 1 = X, 2 = Y
+    switch (operation) {
+    case MENUOP_GETSLIDER:
+        if (axis == 2) {
+            inputGyroGetSpeed(g_ExtMenuPlayer, NULL, &sensY);
+            data->slider.value = sensY * 100.f + 0.5f;
+        } else {
+            inputGyroGetSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            data->slider.value = sensX * 100.f + 0.5f;
+        }
+        break;
+    case MENUOP_SET:
+        {
+            f32 val = (f32)data->slider.value / 100.f;
+            if (axis == 0) {
+                // Unified: set both X and Y to same value
+                inputGyroSetSpeed(g_ExtMenuPlayer, val, val);
+            } else if (axis == 1) {
+                // X only: preserve Y
+                inputGyroGetSpeed(g_ExtMenuPlayer, NULL, &sensY);
+                inputGyroSetSpeed(g_ExtMenuPlayer, val, sensY);
+            } else {
+                // Y only: preserve X
+                inputGyroGetSpeed(g_ExtMenuPlayer, &sensX, NULL);
+                inputGyroSetSpeed(g_ExtMenuPlayer, sensX, val);
+            }
+        }
+        break;
+    case MENUOP_GETSLIDERLABEL:
+        if (axis == 2) {
+            inputGyroGetSpeed(g_ExtMenuPlayer, NULL, &sensY);
+            sprintf(data->slider.label, "%.2f", sensY);
+        } else if (axis == 1) {
+            inputGyroGetSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            sprintf(data->slider.label, "%.2f", sensX);
+        } else {
+            // Unified slider will show Multiplier value
+            inputGyroGetSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            sprintf(data->slider.label, "%.2fx", sensX);
+        }
+        break;
+    case MENUOP_CHECKHIDDEN:
+        // Unified (0): hide when advanced mode is enabled
+        // X/Y (1,2): hide when advanced mode is disabled
+        if (axis == 0) {
+            return inputGyroGetAdvanced(g_ExtMenuPlayer);
+        } else {
+            return !inputGyroGetAdvanced(g_ExtMenuPlayer);
+        }
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroInvertX(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    s32 invertx, inverty;
+    switch (operation) {
+    case MENUOP_GET:
+        inputGyroGetInvert(g_ExtMenuPlayer, &invertx, NULL);
+        return invertx;
+    case MENUOP_SET:
+        inputGyroGetInvert(g_ExtMenuPlayer, NULL, &inverty);
+        inputGyroSetInvert(g_ExtMenuPlayer, data->checkbox.value, inverty);
+        break;
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroInvertY(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    s32 invertx, inverty;
+    switch (operation) {
+    case MENUOP_GET:
+        inputGyroGetInvert(g_ExtMenuPlayer, NULL, &inverty);
+        return inverty;
+    case MENUOP_SET:
+        inputGyroGetInvert(g_ExtMenuPlayer, &invertx, NULL);
+        inputGyroSetInvert(g_ExtMenuPlayer, invertx, data->checkbox.value);
+        break;
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroCrosshairSpeed(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    f32 sensX, sensY;
+    s32 axis = item->param; // 0 = unified, 1 = X, 2 = Y
+    switch (operation) {
+    case MENUOP_GETSLIDER:
+        if (axis == 2) {
+            inputGyroGetAimSpeed(g_ExtMenuPlayer, NULL, &sensY);
+            data->slider.value = sensY * 100.f + 0.5f;
+        } else {
+            inputGyroGetAimSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            data->slider.value = sensX * 100.f + 0.5f;
+        }
+        break;
+    case MENUOP_SET:
+        {
+            f32 val = (f32)data->slider.value / 100.f;
+            if (axis == 0) {
+                // Unified: set both X and Y to same value
+                inputGyroSetAimSpeed(g_ExtMenuPlayer, val, val);
+            } else if (axis == 1) {
+                // X only: preserve Y
+                inputGyroGetAimSpeed(g_ExtMenuPlayer, NULL, &sensY);
+                inputGyroSetAimSpeed(g_ExtMenuPlayer, val, sensY);
+            } else {
+                // Y only: preserve X
+                inputGyroGetAimSpeed(g_ExtMenuPlayer, &sensX, NULL);
+                inputGyroSetAimSpeed(g_ExtMenuPlayer, sensX, val);
+            }
+        }
+        break;
+    case MENUOP_GETSLIDERLABEL:
+        if (axis == 2) {
+            inputGyroGetAimSpeed(g_ExtMenuPlayer, NULL, &sensY);
+            sprintf(data->slider.label, "%.2f", sensY);
+        } else {
+            inputGyroGetAimSpeed(g_ExtMenuPlayer, &sensX, NULL);
+            sprintf(data->slider.label, "%.2f", sensX);
+        }
+        break;
+    case MENUOP_CHECKHIDDEN:
+        // Unified (0): hide when advanced mode is enabled
+        // X/Y (1,2): hide when advanced mode is disabled
+        if (axis == 0) {
+            return inputGyroGetAdvanced(g_ExtMenuPlayer);
+        } else {
+            return !inputGyroGetAdvanced(g_ExtMenuPlayer);
+        }
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAimInvertX(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    s32 invertx, inverty;
+    switch (operation) {
+    case MENUOP_GET:
+        inputGyroGetAimInvert(g_ExtMenuPlayer, &invertx, NULL);
+        return invertx;
+    case MENUOP_SET:
+        inputGyroGetAimInvert(g_ExtMenuPlayer, NULL, &inverty);
+        inputGyroSetAimInvert(g_ExtMenuPlayer, data->checkbox.value, inverty);
+        break;
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAimInvertY(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    s32 invertx, inverty;
+    switch (operation) {
+    case MENUOP_GET:
+        inputGyroGetAimInvert(g_ExtMenuPlayer, NULL, &inverty);
+        return inverty;
+    case MENUOP_SET:
+        inputGyroGetAimInvert(g_ExtMenuPlayer, &invertx, NULL);
+        inputGyroSetAimInvert(g_ExtMenuPlayer, invertx, data->checkbox.value);
+        break;
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroVHMixer(s32 operation, struct menuitem* item, union handlerdata* data)
+{
+    switch (operation) {
+    case MENUOP_GETSLIDER:
+        data->slider.value = (inputGetGyroVHMixer(g_ExtMenuPlayer) + 1.0f) * 100.0f + 0.5f;
+        break;
+    case MENUOP_SET:
+        inputSetGyroVHMixer(g_ExtMenuPlayer, (float)data->slider.value / 100.0f - 1.0f);
+		break;
+	case MENUOP_GETSLIDERLABEL:
+		sprintf(data->slider.label, "%d%%", (int)data->slider.value - 100);
+		break;
+	case MENUOP_CHECKHIDDEN:
+		// Hide when advanced mode is enabled
+		return inputGyroGetAdvanced(g_ExtMenuPlayer);
+	}
+	return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroSmoothing(s32 operation, struct menuitem* item, union handlerdata *data)
+{
+		switch (operation) {
+		case MENUOP_GETSLIDER:
+				data->slider.value = inputGetGyroSmoothing(g_ExtMenuPlayer) * 100.0f;
+				break;
+		case MENUOP_SET:
+				inputSetGyroSmoothing(g_ExtMenuPlayer, (f32)data->slider.value / 100.0f);
+				break;
+	case MENUOP_GETSLIDERLABEL:
+		sprintf(data->slider.label, "%.0f%%", inputGetGyroSmoothing(g_ExtMenuPlayer) * 100.0f);
+		break;
+		}
+
+		return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroTightening(s32 operation, struct menuitem* item, union handlerdata *data)
+{
+    switch (operation) {
+    case MENUOP_GETSLIDER:
+        data->slider.value = inputGyroGetTightening(g_ExtMenuPlayer) * 100.0f;
+        break;
+    case MENUOP_SET:
+        inputGyroSetTightening(g_ExtMenuPlayer, (f32)data->slider.value / 100.0f);
+        break;
+    case MENUOP_GETSLIDERLABEL:
+        sprintf(data->slider.label, "%.0f%%", inputGyroGetTightening(g_ExtMenuPlayer) * 100.0f);
+        break;
+    }
+    return 0;
+}
+
+static MenuItemHandlerResult menuhandlerGyroAutoCalibration(s32 operation, struct menuitem* item, union handlerdata *data)
+{
+	static const char* opts[] = {
+		"Disabled",
+		"While In Menus",
+		"Always"
+	};
+
+	switch (operation) {
+	case MENUOP_GETOPTIONCOUNT:
+		data->dropdown.value = ARRAYCOUNT(opts);
+		break;
+	case MENUOP_GETOPTIONTEXT:
+		return (intptr_t)opts[data->dropdown.value];
+	case MENUOP_SET:
+		inputGyroSetAutoCalibration(g_ExtMenuPlayer, data->dropdown.value);
+		break;
+	case MENUOP_GETSELECTEDINDEX:
+		data->dropdown.value = inputGyroGetAutoCalibration(g_ExtMenuPlayer);
+		break;
+	}
+	return 0;
+}
+
+static const char *menutextGyroManualCalibration(struct menuitem *item)
+{
+    static char timer_text[128];
+    switch (g_GyroCalibrationState[g_ExtMenuPlayer]) {
+    case 1:
+        {
+            u32 elapsed_ms = SDL_GetTicks() - g_GyroCalibrationStartTime[g_ExtMenuPlayer];
+            s32 seconds_left = 5 - (elapsed_ms / 1000);
+            if (seconds_left < 0) seconds_left = 0;
+            sprintf(timer_text, "Gyro Calibrating in %d...\nPlace the controller on a flat surface.\n", seconds_left);
+            return timer_text;
+        }
+    case 2:
+        {
+            static char reset_text[128];
+            const u32 *accept_binds = inputKeyGetBinds(g_ExtMenuPlayer, CK_ACCEPT);
+            const u32 *ztrig_binds = inputKeyGetBinds(g_ExtMenuPlayer, CK_ZTRIG);
+            const char *gamepad_key_name = "ACCEPT";
+            const char *keyboard_key_name = "Z TRIG";
+
+            if (accept_binds && accept_binds[0]) {
+                gamepad_key_name = inputGetKeyName(accept_binds[0]);
+            }
+
+            if (ztrig_binds && ztrig_binds[0]) {
+                // Find the first keyboard/mouse bind
+                for (int i = 0; i < INPUT_MAX_BINDS && ztrig_binds[i] != 0; ++i) {
+                    if (ztrig_binds[i] < VK_JOY_BEGIN) {
+                        keyboard_key_name = inputGetKeyName(ztrig_binds[i]);
+                        break;
+                    }
+                }
+            }
+
+            sprintf(reset_text, "Gyro Calibration Complete!\nPress %s/%s to restart.\n", gamepad_key_name, keyboard_key_name);
+            return reset_text;
+        }
+    default:
+        return "Initiate Gyro Calibration...\n";
+    }
+}
+
+static MenuItemHandlerResult menuhandlerGyroManualCalibration(s32 operation, struct menuitem* item, union handlerdata *data)
+{
+    switch (operation) {
+    case MENUOP_OPEN:
+        // Reset the state when the menu is opened
+        g_GyroCalibrationState[g_ExtMenuPlayer] = 0;
+        break;
+    case MENUOP_SET:
+        switch (g_GyroCalibrationState[g_ExtMenuPlayer]) {
+        case 0:
+            // Initial press, will start timer
+            g_GyroCalibrationState[g_ExtMenuPlayer] = 1;
+            g_GyroCalibrationStartTime[g_ExtMenuPlayer] = SDL_GetTicks();
+            break;
+        case 1:
+            // Timer is active, wait for 5 seconds
+            break;
+        case 2:
+            // already completed, restart the calibration
+            g_GyroCalibrationState[g_ExtMenuPlayer] = 1;
+            g_GyroCalibrationStartTime[g_ExtMenuPlayer] = SDL_GetTicks();
+            break;
+        }
+        break;
+    }
+    return 0;
+}
+
+struct menuitem g_ExtendedGyroMenuItems[] = {
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Enable Gyro Aim",
+		0,
+		menuhandlerGyroEnabled,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Aiming Mode",
+		0,
+		menuhandlerGyroAimMode,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Gyro Activation (Modifier)",
+		0,
+		menuhandlerGyroModifier,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Turning Axis Orientation",
+		0,
+		menuhandlerGyroAxisMode,
+	},
+	{
+		MENUITEMTYPE_DROPDOWN,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_LIST_WIDE,
+		(uintptr_t)"Gyro Auto-Calibration",
+		0,
+		menuhandlerGyroAutoCalibration,
+	},
+    {
+        MENUITEMTYPE_SELECTABLE,
+        0,
+        0,
+        (uintptr_t)menutextGyroManualCalibration,
+        0,
+        menuhandlerGyroManualCalibration,
+    },
+	{
+		MENUITEMTYPE_SEPARATOR,
+        0,
+        0,
+        0,
+        0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Speed (deg/s)",
+		3000,
+		menuhandlerGyroSensitivity,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		1,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Speed X",
+		3000,
+		menuhandlerGyroSensitivity,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		2,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Speed Y",
+		3000,
+		menuhandlerGyroSensitivity,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Crosshair Speed",
+		1000,
+		menuhandlerGyroCrosshairSpeed,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		1,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Crosshair Speed X",
+		1000,
+		menuhandlerGyroCrosshairSpeed,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		2,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Gyro Crosshair Speed Y",
+		1000,
+		menuhandlerGyroCrosshairSpeed,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"X/Y Output Mixer",
+		200,
+		menuhandlerGyroVHMixer,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Invert Gyro Speed X",
+		0,
+		menuhandlerGyroInvertX,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Invert Gyro Speed Y",
+		0,
+		menuhandlerGyroInvertY,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Invert Gyro Crosshair X",
+		0,
+		menuhandlerGyroAimInvertX,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Invert Gyro Crosshair Y",
+		0,
+		menuhandlerGyroAimInvertY,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Smoothing Threshold",
+		100,
+		menuhandlerGyroSmoothing,
+	},
+	{
+		MENUITEMTYPE_SLIDER,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_SLIDER_WIDE,
+		(uintptr_t)"Tightening Threshold",
+		100,
+		menuhandlerGyroTightening,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_CHECKBOX,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Enable Gyro Advanced Settings",
+		0,
+		menuhandlerGyroAdvanced,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_SELECTABLE_CLOSESDIALOG,
+		L_OPTIONS_213, // "Back"
+		0,
+		NULL,
+	},
+	{ MENUITEMTYPE_END },
+};
+
+static s32 menuhandlerExtendedGyroMenu(s32 operation, struct menudialogdef *dialog, union handlerdata *data)
+{
+    if (operation == MENUOP_CLOSE) {
+        g_GyroCalibrationState[g_ExtMenuPlayer] = 0;
+    }
+
+    if (operation == MENUOP_TICK) {
+        if (g_GyroCalibrationState[g_ExtMenuPlayer] == 1) {
+            if (SDL_GetTicks() - g_GyroCalibrationStartTime[g_ExtMenuPlayer] >= 5000) {
+                g_GyroCalibrationState[g_ExtMenuPlayer] = 0;
+                inputGyroSetManualCalibration(g_ExtMenuPlayer);
+                g_GyroCalibrationState[g_ExtMenuPlayer] = 2;
+            }
+        }
+    }
+    return 0;
+}
+
+struct menudialogdef g_ExtendedGyroMenuDialog = {
+        MENUDIALOGTYPE_DEFAULT,
+        (uintptr_t)"Gyro Settings",
+        g_ExtendedGyroMenuItems,
+        menuhandlerExtendedGyroMenu,
+        MENUDIALOGFLAG_LITERAL_TEXT,
+        NULL,
+};
+
+static MenuItemHandlerResult menuhandlerGyroSettingsMenu(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_CHECKDISABLED:
+		// Disable the menu item if controller doesn't have motion sensors support
+		return !inputControllerMotionSensorsSupported(g_ExtMenuPlayer);
+	case MENUOP_SET:
+		// Enables the menu item if controller has motion sensors support
+		if (inputControllerMotionSensorsSupported(g_ExtMenuPlayer)) {
+			menuPushDialog(&g_ExtendedGyroMenuDialog);
+		}
+		break;
+	}
+	return 0;
+}
+
 static MenuItemHandlerResult menuhandlerController(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	static char ctrlname[35];
@@ -647,7 +1343,15 @@ struct menuitem g_ExtendedControllerMenuItems[] = {
 		MENUITEMFLAG_SELECTABLE_OPENSDIALOG | MENUITEMFLAG_LITERAL_TEXT,
 		(uintptr_t)"Stick Settings...\n",
 		0,
-		(void *)&g_ExtendedStickMenuDialog,
+		(void*)&g_ExtendedStickMenuDialog,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Gyro Settings...\n",
+		0,
+		menuhandlerGyroSettingsMenu,
 	},
 	{
 		MENUITEMTYPE_SLIDER,
@@ -1725,27 +2429,29 @@ struct menubind {
 };
 
 static const struct menubind menuBinds[] = {
-	{ CK_ZTRIG,  "Fire [ZT]\n",         "N64 Z Trigger\n" },
-	{ CK_LTRIG,  "Fire Mode [LT]\n",    "N64 L Trigger\n"},
-	{ CK_RTRIG,  "Aim Mode [RT]\n",     "N64 R Trigger\n" },
-	{ CK_A,      "Use / Accept [A]\n",  "N64 A Button\n" },
-	{ CK_B,      "Use / Cancel [B]\n",  "N64 B Button\n" },
-	{ CK_START,  "Pause Menu [ST]\n",   "N64 Start\n" },
-	{ CK_DPAD_U, "D-Pad Up [DU]\n",     "N64 D-Pad Up\n" },
-	{ CK_DPAD_R, "D-Pad Right [DR]\n",  "N64 D-Pad Right\n" },
-	{ CK_DPAD_L, "Prev Weapon [DL]\n",  "N64 D-Pad Left\n" },
-	{ CK_DPAD_D, "Radial Menu [DD]\n",  "N64 D-Pad Down\n" },
-	{ CK_C_U,    "Forward [CU]\n",      "N64 C-Up\n" },
-	{ CK_C_D,    "Backward [CD]\n",     "N64 C-Down\n" },
-	{ CK_C_R,    "Strafe Right [CR]\n", "N64 C-Right\n" },
-	{ CK_C_L,    "Strafe Left [CL]\n",  "N64 C-Left\n" },
-	{ CK_X,      "Reload [X]\n",        "N64 Ext X\n" },
-	{ CK_Y,      "Next Weapon [Y]\n",   "N64 Ext Y\n" },
-	{ CK_8000,   "Cycle Crouch [+]\n",  "N64 Ext 8000\n" },
-	{ CK_4000,   "Half Crouch [+]\n",   "N64 Ext 4000\n" },
-	{ CK_2000,   "Full Crouch [+]\n",   "N64 Ext 2000\n" },
-	{ CK_ACCEPT, "UI Accept [+]\n",     "EXT UI Accept\n" },
-	{ CK_CANCEL, "UI Cancel [+]\n",     "EXT UI Cancel\n" },
+	{ CK_ZTRIG,   "Fire [ZT]\n",                     "N64 Z Trigger\n" },
+	{ CK_LTRIG,   "Fire Mode [LT]\n",                "N64 L Trigger\n" },
+	{ CK_RTRIG,   "Aim Mode [RT]\n",                 "N64 R Trigger\n" },
+	{ CK_A,       "Use / Accept [A]\n",              "N64 A Button\n" },
+	{ CK_B,       "Use / Cancel [B]\n",              "N64 B Button\n" },
+	{ CK_START,   "Pause Menu [ST]\n",               "N64 Start\n" },
+	{ CK_DPAD_U,  "D-Pad Up [DU]\n",                 "N64 D-Pad Up\n" },
+	{ CK_DPAD_R,  "D-Pad Right [DR]\n",              "N64 D-Pad Right\n" },
+	{ CK_DPAD_L,  "Prev Weapon [DL]\n",              "N64 D-Pad Left\n" },
+	{ CK_DPAD_D,  "Radial Menu [DD]\n",              "N64 D-Pad Down\n" },
+	{ CK_C_U,     "Forward [CU]\n",                  "N64 C-Up\n" },
+	{ CK_C_D,     "Backward [CD]\n",                 "N64 C-Down\n" },
+	{ CK_C_R,     "Strafe Right [CR]\n",             "N64 C-Right\n" },
+	{ CK_C_L,     "Strafe Left [CL]\n",              "N64 C-Left\n" },
+	{ CK_X,       "Reload [X]\n",                    "N64 Ext X\n" },
+	{ CK_Y,       "Next Weapon [Y]\n",               "N64 Ext Y\n" },
+	{ CK_8000,    "Cycle Crouch [+]\n",              "N64 Ext 8000\n" },
+	{ CK_4000,    "Half Crouch [+]\n",               "N64 Ext 4000\n" },
+	{ CK_2000,    "Full Crouch [+]\n",               "N64 Ext 2000\n" },
+	{ CK_0080,    "Gyro Activation Modifier [+]\n",  "EXT Gyro Activation Modifier\n" },
+	{ CK_0100,    "Gyro Calibration (Manual) [+]\n", "EXT Gyro Calibration (Manual)\n" },
+	{ CK_ACCEPT,  "UI Accept [+]\n",                 "EXT UI Accept\n" },
+	{ CK_CANCEL,  "UI Cancel [+]\n",                 "EXT UI Cancel\n" },
 };
 
 static const char *menutextBind(struct menuitem *item);
@@ -1764,6 +2470,8 @@ static MenuItemHandlerResult menuhandlerResetBindsN64(s32 operation, struct menu
 	}
 
 struct menuitem g_ExtendedBindsMenuItems[] = {
+	DEFINE_MENU_BIND(),
+	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),
 	DEFINE_MENU_BIND(),

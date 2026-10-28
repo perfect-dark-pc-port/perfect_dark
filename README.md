@@ -24,6 +24,8 @@ There are minor graphics- and gameplay-related issues, and possibly occasional c
 **The following extra features are implemented:**
 * mouselook;
 * dual analog controller support;
+* gyro aiming support 
+  * compatible controllers only
 * widescreen resolution support;
 * configurable field of view;
 * 60 FPS support, including fixes for some framerate-related issues;
@@ -88,7 +90,22 @@ N64 pad buttons X and Y (or `X_BUTTON`, `Y_BUTTON` in the code) refer to the res
 
 Support for one controller, two-stick configurations are enabled for 1.2.
 
+Motion Sensor Aiming (also known as Gyro Aiming) is enabled by default while Aiming (`Crosshair only` via `Gyro Settings`).
+
 Note that the mouse only controls player 1.
+
+> [!NOTE]
+> Gyro Aiming is only supported for controllers that has Motion Sensor functionality. (**DualShock 4**, **DualSense**, **Nintendo Switch family of controllers**)
+>
+> Gyro Aiming will not work if using a Input Remapper lacks controller-specific emulation (example: Steam Input), or using a controller that doesn't support Motion Sensors such as Xbox Wireless Controller.
+
+> [!TIP]
+> Gyro Drift may become a occurence during regular gameplay, but far more frequent when using a first-party Nintendo Switch controllers. To remedy this issue: `Gyro Calibration` (under `Player [Number] Controller Options`'s `Gyro Settings`) offers various modes for you to choose from, from `While In Menus` (default) to `Always`. Depending on what Calibration mode you choose from: just place the controller on the flat surface, and it will automatically calibrate gyro after a few seconds.
+>
+> If the Autocalibration fails or you don't want the gyro to auto-calibrate during regular gameplay: you have the ability to manually calibrate the gyro. You can head over to "`Gyro Settings...`" menu, either select `Initiate Gyro Calibration...`, pressing the `VIEW` button on your Xbox pad or `F10` key (Player 1 only) at anytime during both gameplay and menus, (it also complements Gyro Autocalibration process!)
+>
+> "`Gyro Calibration (Manual)`" can be rebinded within `pd.ini` or Extended Options' `Key Binding` menu.
+>
 
 Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 
@@ -108,6 +125,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 | Alt fire mode    | F                      | RB                       | L Trigger                 |
 | Alt-fire oneshot | `F + LMB` or `E + LMB` | `A + RT` or  `RB + RT`   | `A + Z`     or `L + Z`    |
 | Quick-detonate   | `E + Q`   or `E + R`   | `A + B`  or  `A + X`     | `A + D-Left`or `A + X`    |
+| Gyro Calibration (Manual)  | F10          | VIEW                     | N/A                       |
 
 ## Building
 
@@ -208,6 +226,9 @@ It might be possible to build and run the game on platforms that are not specifi
 * [Ship of Harkinian team](https://github.com/Kenix3/libultraship/tree/main/src/fast), Emill and MaikelChan for the libultraship version of fast3d that this port uses;
 * lieff for [minimp3](https://github.com/lieff/minimp3);
 * Mouse Injector and 1964GEPD authors for some of the 60FPS- and mouselook-related fixes;
+* [n64emu-SDL2GyroInjector](https://github.com/TauAkiou/n64emu-SDL2GyroInjector) author for inspirations on Gyro Aiming feature sets.
+* [GamepadMotionHelpers](https://github.com/JibbSmart/GamepadMotionHelpers) author for motion sensor-related tools like sensor fusion, gyro space and gyro calibration.
+  * additionally: Jibb Smart for some of the Gyro resources via [GyroWiki](http://gyrowiki.jibbsmart.com/). 
 * Raf for the 64-bit port;
 * NicNamSam for the icon;
 * everyone who has submitted pull requests and issues to this repository and tested the port;
