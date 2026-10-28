@@ -994,6 +994,7 @@ bool shotTestLos(struct coord *gunpos2d, struct coord *gundir2d, struct coord *g
 	struct prop *prop;
 	s16 texturenum;
 	u32 surfacetype;
+	f32 maxdistance;
 
 	shotdata.gunpos3d.x = gunpos3d->x;
 	shotdata.gunpos3d.y = gunpos3d->y;
@@ -1056,7 +1057,9 @@ bool shotTestLos(struct coord *gunpos2d, struct coord *gundir2d, struct coord *g
 	delta.x = endpos3d->x - gunpos3d->x;
 	delta.y = endpos3d->y - gunpos3d->y;
 	delta.z = endpos3d->z - gunpos3d->z;
-	shotdata.distance = sqrtf(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+	maxdistance = sqrtf(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+
+	shotdata.distance = maxdistance;
 
 	// and check props
 	propptr = g_Vars.endonscreenprops - 1;
@@ -1074,12 +1077,13 @@ bool shotTestLos(struct coord *gunpos2d, struct coord *gundir2d, struct coord *g
 			if (shotdata.hits[0].prop) {
 				texturenum = (prop->type == PROPTYPE_CHR || prop->type == PROPTYPE_PLAYER) ? -1 : shotdata.hits[0].hitthing.texturenum;
 				surfacetype = (texturenum >= 0 && texturenum < NUM_TEXTURES) ? g_Textures[texturenum].surfacetype : SURFACETYPE_DEFAULT;
-				// ignore some glass parts and shields
-				if (shotdata.hits[0].slowsbullet && texturenum != 10000 &&
+				// ignore some glass parts, metal gratings, and shields
+				if (shotdata.hits[0].slowsbullet && texturenum != 10000 && texturenum != 0x61 && texturenum != 0x654 &&
 				    surfacetype != SURFACETYPE_GLASS && surfacetype != SURFACETYPE_GLASSXLU) {
 					return false;
 				}
 				shotdata.hits[0].prop = NULL;
+				shotdata.distance = maxdistance;
 			}
 		}
 		propptr--;
