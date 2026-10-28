@@ -298,3 +298,44 @@ void configInit(void)
 		configLoad(CONFIG_PATH);
 	}
 }
+
+static u32 configEntryValueSize(const struct configentry *cfg)
+{
+	switch (cfg->type) {
+		case CFG_S32:
+		case CFG_F32:
+		case CFG_U32:
+			return 4;
+		case CFG_STR:
+			return cfg->max_str;
+		default:
+			return 0;
+	}
+}
+
+u32 configValuesSize(void)
+{
+	u32 size = 0;
+	for (s32 i = 0; i < numSettings; ++i) {
+		size += configEntryValueSize(&settings[i]);
+	}
+	return size;
+}
+
+void configValuesCopyOut(u8 *dst)
+{
+	for (s32 i = 0; i < numSettings; ++i) {
+		const u32 size = configEntryValueSize(&settings[i]);
+		memcpy(dst, settings[i].ptr, size);
+		dst += size;
+	}
+}
+
+void configValuesCopyIn(const u8 *src)
+{
+	for (s32 i = 0; i < numSettings; ++i) {
+		const u32 size = configEntryValueSize(&settings[i]);
+		memcpy(settings[i].ptr, src, size);
+		src += size;
+	}
+}

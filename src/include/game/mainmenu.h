@@ -51,6 +51,7 @@ MenuItemHandlerResult menuhandlerMissionList(s32 operation, struct menuitem *ite
 MenuItemHandlerResult menuhandlerControlStyle(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult menuhandlerFrInventoryList(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult menuhandlerInventoryList(s32 operation, struct menuitem *item, union handlerdata *data);
+MenuItemHandlerResult menuhandlerLoadCheckpoint(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult menuhandlerAbortMission(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult menuhandlerCinema(s32 operation, struct menuitem *item, union handlerdata *data);
 MenuItemHandlerResult menuhandlerAimControl(s32 operation, struct menuitem *item, union handlerdata *data);

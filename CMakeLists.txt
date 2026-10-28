@@ -312,15 +312,31 @@ set(SRC_LIB
 )
 list(PREPEND SRC_LIB "${CMAKE_SOURCE_DIR}")
 
-set(SRC
+# Mission checkpoints (port/src/savestate.c) copy the game's globals as two flat ranges,
+# found by link order: the game's objects are linked between the begin and end markers
+# below, and nothing else is (macOS uses explicit sections instead). Keep the order of this list. The game's sysMem* calls are
+# also routed into the checkpoint arena (savestate_game.h).
+list(FILTER SRC_PORT EXCLUDE REGEX "/port/savestate/")
+set(SRC_GAME_ALL
   ${SRC_GAME}
-  ${SRC_PORT}
-  ${SRC_PORT_CXX}
   ${SRC_LIB_MP3}
   ${SRC_LIB_NAUDIO}
   ${SRC_LIB_ULTRA_AUDIO}
   ${SRC_LIB_GU}
   ${SRC_LIB}
+)
+set_source_files_properties(${SRC_GAME_ALL} PROPERTIES COMPILE_OPTIONS "-fno-common;-include;savestate_game.h")
+set_source_files_properties(
+  "${CMAKE_SOURCE_DIR}/port/savestate/begin.c" "${CMAKE_SOURCE_DIR}/port/savestate/end.c"
+  PROPERTIES COMPILE_OPTIONS "-fno-common"
+)
+
+set(SRC
+  "${CMAKE_SOURCE_DIR}/port/savestate/begin.c"
+  ${SRC_GAME_ALL}
+  "${CMAKE_SOURCE_DIR}/port/savestate/end.c"
+  ${SRC_PORT}
+  ${SRC_PORT_CXX}
 )
 
 if(WIN32)

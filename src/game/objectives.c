@@ -23,6 +23,7 @@
 #include "data.h"
 #include "types.h"
 #include "platform.h"
+#include "savestate.h"
 
 struct objective *g_Objectives[MAX_OBJECTIVES];
 u32 g_ObjectiveStatuses[MAX_OBJECTIVES];
@@ -395,6 +396,10 @@ void objectivesCheckAll(void)
 				g_ObjectiveStatuses[i] = status;
 
 				if (objectiveGetDifficultyBits(i) & (1 << lvGetDifficulty())) {
+					if (status == OBJECTIVE_COMPLETE) {
+						savestateOnObjectiveComplete(i);
+					}
+
 #if VERSION >= VERSION_JPN_FINAL
 					u8 jpnstr[] = {0, 0, 0};
 					jpnstr[0] = 0x80;

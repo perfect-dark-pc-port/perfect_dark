@@ -30,6 +30,7 @@
 #include "lib/str.h"
 #include "data.h"
 #include "types.h"
+#include "savestate.h"
 
 MenuItemHandlerResult endscreenHandleDeclineMission(s32 operation, struct menuitem *item, union handlerdata *data)
 {
@@ -495,6 +496,14 @@ struct menuitem g_SoloEndscreenObjectivesMenuItems[] = {
 		0,
 		0,
 		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Load Checkpoint\n",
+		0,
+		menuhandlerLoadCheckpoint,
 	},
 	{
 		MENUITEMTYPE_SEPARATOR,
@@ -1409,6 +1418,71 @@ struct menudialogdef g_SoloMissionEndscreenFailedMenuDialog = {
 	&g_SoloEndscreenObjectivesFailedMenuDialog,
 };
 
+// Offered instead of the Mission Failed screen when the player dies and a checkpoint exists
+// (port/src/savestate.c). Quit carries on to the normal Mission Failed screen.
+MenuItemHandlerResult endscreenHandleDeathLoadCheckpoint(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		savestateRequestLoad();
+	}
+
+	return 0;
+}
+
+MenuItemHandlerResult endscreenHandleDeathQuit(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	if (operation == MENUOP_SET) {
+		func0f0f3704(&g_SoloMissionEndscreenFailedMenuDialog);
+	}
+
+	return 0;
+}
+
+struct menuitem g_CheckpointDeathMenuItems[] = {
+	{
+		MENUITEMTYPE_LABEL,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT | MENUITEMFLAG_LESSLEFTPADDING,
+		(uintptr_t)"Agent down. Load the last checkpoint?\n",
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SEPARATOR,
+		0,
+		0,
+		0,
+		0,
+		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Load Last Checkpoint\n",
+		0,
+		endscreenHandleDeathLoadCheckpoint,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Quit\n",
+		0,
+		endscreenHandleDeathQuit,
+	},
+	{ MENUITEMTYPE_END },
+};
+
+struct menudialogdef g_CheckpointDeathMenuDialog = {
+	MENUDIALOGTYPE_DANGER,
+	(uintptr_t)"Mission Failed",
+	g_CheckpointDeathMenuItems,
+	NULL,
+	MENUDIALOGFLAG_LITERAL_TEXT | MENUDIALOGFLAG_IGNOREBACK,
+	NULL,
+};
+
 /**
  * Prepare the endscreen by calculating unlocked cheats, setting the new best
  * time, choosing the default stage and difficulty and saving the game file.
@@ -1464,7 +1538,11 @@ void endscreenPrepare(void)
 		if (g_Vars.currentplayer->isdead || g_Vars.currentplayer->aborted || !objectiveIsAllComplete())
 #endif
 		{
-			menuPushRootDialog(&g_SoloMissionEndscreenFailedMenuDialog, MENUROOT_ENDSCREEN);
+			if (g_Vars.currentplayer->isdead && !g_Vars.currentplayer->aborted && savestateHasCheckpoint()) {
+				menuPushRootDialog(&g_CheckpointDeathMenuDialog, MENUROOT_ENDSCREEN);
+			} else {
+				menuPushRootDialog(&g_SoloMissionEndscreenFailedMenuDialog, MENUROOT_ENDSCREEN);
+			}
 		} else {
 			menuPushRootDialog(&g_SoloMissionEndscreenCompletedMenuDialog, MENUROOT_ENDSCREEN);
 

@@ -33,6 +33,7 @@
 #include "lib/str.h"
 #include "data.h"
 #include "types.h"
+#include "savestate.h"
 
 u8 g_InventoryWeapon;
 
@@ -4358,6 +4359,28 @@ MenuItemHandlerResult menuhandlerInventoryList(s32 operation, struct menuitem *i
 	return 0;
 }
 
+// Load the in-memory checkpoint (port/src/savestate.c). Hidden until one exists, and on the
+// endscreen after a death (the death prompt already offered it) or a completed mission.
+MenuItemHandlerResult menuhandlerLoadCheckpoint(s32 operation, struct menuitem *item, union handlerdata *data)
+{
+	switch (operation) {
+	case MENUOP_CHECKHIDDEN:
+		if (!savestateHasCheckpoint()) {
+			return true;
+		}
+		if (g_MenuData.root == MENUROOT_ENDSCREEN && (g_Vars.bond->isdead || (!g_Vars.bond->aborted && objectiveIsAllComplete()))) {
+			// a death already offered the checkpoint (endscreen.c), and a completed mission has nothing to retry
+			return true;
+		}
+		break;
+	case MENUOP_SET:
+		savestateRequestLoad();
+		break;
+	}
+
+	return 0;
+}
+
 MenuItemHandlerResult menuhandlerAbortMission(s32 operation, struct menuitem *item, union handlerdata *data)
 {
 	if (operation == MENUOP_SET) {
@@ -4534,6 +4557,14 @@ struct menuitem g_MissionPauseMenuItems[] = {
 		0,
 		0,
 		NULL,
+	},
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		MENUITEMFLAG_LITERAL_TEXT,
+		(uintptr_t)"Load Checkpoint\n",
+		0,
+		menuhandlerLoadCheckpoint,
 	},
 	{
 		MENUITEMTYPE_SELECTABLE,
