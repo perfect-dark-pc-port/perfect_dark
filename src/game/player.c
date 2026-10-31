@@ -70,6 +70,9 @@
 #include "lib/lib_317f0.h"
 #include "data.h"
 #include "types.h"
+#if PERFECTHEAD
+#include "game/phead.h"
+#endif
 #ifndef PLATFORM_N64
 #include "video.h"
 #include "input.h"
@@ -1205,6 +1208,11 @@ void playerChooseBodyAndHead(s32 *bodynum, s32 *headnum, s32 *arg2)
 	if (g_Vars.normmplayerisrunning) {
 		if (g_PlayerConfigsArray[g_Vars.currentplayerstats->mpindex].base.mpheadnum < mpGetNumHeads2()) {
 			*headnum = mpGetHeadId(g_PlayerConfigsArray[g_Vars.currentplayerstats->mpindex].base.mpheadnum);
+#if PERFECTHEAD
+		} else if (pheadGetMpHead(g_PlayerConfigsArray[g_Vars.currentplayerstats->mpindex].base.mpheadnum) < 0) {
+			// The PerfectHead isn't loaded (any more)
+			*headnum = mpGetHeadId(MPHEAD_DARK_COMBAT);
+#endif
 		} else {
 			*headnum = g_PlayerConfigsArray[g_Vars.currentplayerstats->mpindex].base.mpheadnum - mpGetNumHeads2();
 
@@ -1495,7 +1503,11 @@ void playerTickChrBody(void)
 			if (g_HeadsAndBodies[bodynum].unk00_01) {
 				headnum = -1;
 			} else if (sp60) {
+#if PERFECTHEAD
+				headmodeldef = pheadLoadHeadModel(headnum, bodynum, &headnum);
+#else
 				headmodeldef = func0f18e57c(headnum, &headnum);
+#endif
 			} else if (g_Vars.normmplayerisrunning && IS8MB()) {
 				g_HeadsAndBodies[headnum].modeldef = modeldefLoadToNew(g_HeadsAndBodies[headnum].filenum);
 				headmodeldef = g_HeadsAndBodies[headnum].modeldef;

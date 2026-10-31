@@ -17,6 +17,11 @@
 #include "mod.h"
 #include "system.h"
 #include "utils.h"
+#include "versions.h"
+#include "webcam.h"
+#if PERFECTHEAD
+extern s32 g_PheadMenuAutoOpen;
+#endif
 
 u32 g_OsMemSize = 0;
 s32 g_OsMemSizeMb = 16;
@@ -88,6 +93,7 @@ static void cleanup(void)
 	sysLogPrintf(LOG_NOTE, "shutdown");
 	inputSaveBinds();
 	configSave(CONFIG_PATH);
+	webcamShutdown();
 	videoShutdown();
 	crashShutdown();
 	// TODO: actually shut down all subsystems
@@ -149,9 +155,15 @@ int main(int argc, const char **argv)
 	}
 
 	g_FileAutoSelect = sysArgGetInt("--profile", -1);
+
 	if (g_FileAutoSelect >= 0) {
 		sysLogPrintf(LOG_NOTE, "player profile set to %d", g_FileAutoSelect);
 	}
+
+#if PERFECTHEAD
+	// Testing aid: open PerfectHead from the main menu
+	g_PheadMenuAutoOpen = sysArgCheck("--phead-menu");
+#endif
 
 	mainProc();
 

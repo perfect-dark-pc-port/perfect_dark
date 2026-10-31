@@ -14,6 +14,9 @@
 #include "lib/ailist.h"
 #include "data.h"
 #include "types.h"
+#if PERFECTHEAD
+#include "game/phead.h"
+#endif
 
 void botmgrRemoveAll(void)
 {
@@ -36,9 +39,20 @@ void botmgrAllocateBot(s32 chrnum, s32 aibotnum)
 	s32 i;
 	s32 bodynum;
 	s32 headnum;
+#if PERFECTHEAD
+	s32 pheadnum;
+#endif
 
 	rooms[0] = -1;
 
+#if PERFECTHEAD
+	pheadnum = pheadGetMpHead(g_BotConfigsArray[aibotnum].base.mpheadnum);
+
+	if (pheadnum < 0 && g_BotConfigsArray[aibotnum].base.mpheadnum >= mpGetNumHeads2()) {
+		// The PerfectHead isn't loaded (any more)
+		headnum = mpGetHeadId(MPHEAD_DARK_COMBAT);
+	} else
+#endif
 	headnum = mpGetHeadId(g_BotConfigsArray[aibotnum].base.mpheadnum);
 	bodynum = mpGetBodyId(g_BotConfigsArray[aibotnum].base.mpbodynum);
 
@@ -47,6 +61,13 @@ void botmgrAllocateBot(s32 chrnum, s32 aibotnum)
 		bodynum = BODY_DDSHOCK;
 	}
 
+#if PERFECTHEAD
+	if (pheadnum >= 0) {
+		struct modeldef *headmodeldef = pheadLoadHeadModel(pheadnum, bodynum, &headnum);
+
+		model = body0f02d338(bodynum, headnum, NULL, headmodeldef, false, true);
+	} else
+#endif
 	model = bodyAllocateModel(bodynum, headnum, 0);
 
 	if (model != NULL) {

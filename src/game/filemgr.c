@@ -19,6 +19,9 @@
 #include "lib/str.h"
 #include "data.h"
 #include "types.h"
+#if PERFECTHEAD
+#include "game/phead.h"
+#endif
 #include "mpsetups.h"
 
 // bss
@@ -469,6 +472,12 @@ char *filemgrMenuTextErrorTitle(struct menuitem *item)
 		return langGet(messages[2]);
 	case FILEOP_SAVE_MPPLAYER:
 		return langGet(messages[3]);
+#if PERFECTHEAD
+	case FILEOP_103:
+		return langGet(messages[4]);
+	case FILEOP_005:
+		return langGet(messages[5]);
+#endif
 	case FILEOP_READ_GAME:
 	case FILEOP_READ_MPSETUP:
 	case FILEOP_READ_MPPLAYER:
@@ -505,6 +514,11 @@ char *filemgrMenuTextFileType(struct menuitem *item)
 	case FILEOP_LOAD_MPPLAYER:
 	case FILEOP_READ_MPPLAYER:
 		return langGet(names[2]);
+#if PERFECTHEAD
+	case FILEOP_005:
+	case FILEOP_103:
+		return langGet(names[3]);
+#endif
 	}
 
 	return langGet(names[0]);
@@ -567,12 +581,19 @@ void filemgrHandleSuccess(void)
 				g_Menus[g_MpPlayerNum].fm.fileop - 98,
 				g_Menus[g_MpPlayerNum].fm.mpplayernum);
 		break;
+#if PERFECTHEAD
+	case FILEOP_005:
+		pheadMenuFileSaved();
+		break;
+#endif
 	case FILEOP_SAVE_GAME_000:
 	case FILEOP_SAVE_GAME_001:
 	case FILEOP_SAVE_GAME_002:
 	case FILEOP_SAVE_MPPLAYER:
 	case FILEOP_SAVE_MPSETUP:
+#if !PERFECTHEAD
 	case FILEOP_005:
+#endif
 	case FILEOP_LOAD_MPPLAYER:
 	case FILEOP_LOAD_MPSETUP:
 	case FILEOP_103:
@@ -611,6 +632,11 @@ MenuItemHandlerResult filemgrSaveElsewhereYesMenuHandler(s32 operation, struct m
 		case FILEOP_WRITE_MPSETUP:
 			filetype = FILETYPE_MPSETUP;
 			break;
+#if PERFECTHEAD
+		case FILEOP_005:
+			filetype = FILETYPE_CAMERA;
+			break;
+#endif
 		}
 
 		filemgrPushSelectLocationDialog(g_Menus[g_MpPlayerNum].fm.fileop + 9, filetype);
@@ -828,6 +854,16 @@ bool filemgrAttemptOperation(s32 device, bool closeonsuccess)
 	case FILEOP_LOAD_GAME:
 		errnum = gamefileLoad(device);
 		break;
+#if PERFECTHEAD
+	case FILEOP_005:
+		errnum = pheadSaveHead(device, g_Menus[g_MpPlayerNum].fm.fileid, g_Menus[g_MpPlayerNum].fm.deviceserial);
+		break;
+	case FILEOP_103:
+		// mpplayernum carries the loaded head slot to load into
+		errnum = pheadLoadHead(device, g_Menus[g_MpPlayerNum].fm.fileid, g_Menus[g_MpPlayerNum].fm.deviceserial,
+				g_Menus[g_MpPlayerNum].fm.mpplayernum);
+		break;
+#endif
 	case FILEOP_LOAD_MPPLAYER:
 		errnum = mpplayerfileLoad(
 				(s32) g_Menus[g_MpPlayerNum].fm.unke44,
@@ -1466,7 +1502,13 @@ const char var7f1b33d8[] = "decided location: %d\n";
 void filemgrSaveToDevice(void)
 {
 	if (g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->spacesfree[g_Menus[g_MpPlayerNum].fm.device2] > 0) {
+#if PERFECTHEAD
+		// PerfectHead files have no name to clash with (the name field holds
+		// the thumbnail)
+		if (g_Menus[g_MpPlayerNum].fm.unke3e != 5 && !filemgrIsNameAvailable(g_Menus[g_MpPlayerNum].fm.device2)) {
+#else
 		if (!filemgrIsNameAvailable(g_Menus[g_MpPlayerNum].fm.device2)) {
+#endif
 			menuPushDialog(&g_FilemgrDuplicateNameMenuDialog);
 		} else {
 			menuPopDialog();
@@ -1474,7 +1516,12 @@ void filemgrSaveToDevice(void)
 			if (g_Menus[g_MpPlayerNum].fm.unke3e == 0) {
 				filemgrSaveGameToDevice(g_Menus[g_MpPlayerNum].fm.device2);
 			} else if (g_Menus[g_MpPlayerNum].fm.unke3e == 5) {
-				// empty
+#if PERFECTHEAD
+				struct fileguid guid;
+				guid.fileid = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[g_Menus[g_MpPlayerNum].fm.device2].fileid;
+				guid.deviceserial = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[g_Menus[g_MpPlayerNum].fm.device2].deviceserial;
+				filemgrSaveOrLoad(&guid, FILEOP_005, 0);
+#endif
 			} else if (g_Menus[g_MpPlayerNum].fm.unke3e == 6) {
 				struct fileguid guid;
 				guid.fileid = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[g_Menus[g_MpPlayerNum].fm.device2].fileid;
@@ -1751,7 +1798,12 @@ MenuItemHandlerResult filemgrSelectLocationMenuHandler(s32 operation, struct men
 		if (g_Menus[g_MpPlayerNum].fm.unke3e == 0) {
 			filemgrSaveGameToDevice(item->param);
 		} else if (g_Menus[g_MpPlayerNum].fm.unke3e == 5) {
-			// empty
+#if PERFECTHEAD
+			struct fileguid guid;
+			guid.fileid = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[item->param].fileid;
+			guid.deviceserial = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[item->param].deviceserial;
+			filemgrSaveOrLoad(&guid, FILEOP_005, 0);
+#endif
 		} else if (g_Menus[g_MpPlayerNum].fm.unke3e == 6) {
 			struct fileguid guid;
 			guid.fileid = g_FileLists[g_Menus[g_MpPlayerNum].fm.listnum]->deviceguids[item->param].fileid;

@@ -10,6 +10,7 @@
 #include "game/music.h"
 #include "game/mplayer/ingame.h"
 #include "game/mplayer/setup.h"
+#include "game/phead.h"
 #include "game/mplayer/scenarios.h"
 #include "game/challenge.h"
 #include "game/lang.h"
@@ -2130,6 +2131,11 @@ MenuItemHandlerResult mpCharacterHeadMenuHandler(s32 operation, struct menuitem 
 	switch (operation) {
 	case MENUOP_GETOPTIONCOUNT:
 		data->carousel.value = mpGetNumHeads2();
+#if PERFECTHEAD
+		// Loaded PerfectHeads follow the normal heads (MENUOP_21 skips the
+		// empty ones)
+		data->carousel.value += PHEAD_NUM_HEADS;
+#endif
 		break;
 	case MENUOP_11:
 #if VERSION >= VERSION_PAL_BETA
@@ -2146,6 +2152,13 @@ MenuItemHandlerResult mpCharacterHeadMenuHandler(s32 operation, struct menuitem 
 
 			g_Menus[g_MpPlayerNum].menumodel.newparams = MENUMODELPARAMS_SET_FILENUM(g_HeadsAndBodies[headnum].filenum);
 			g_Menus[g_MpPlayerNum].menumodel.isperfecthead = false;
+#if PERFECTHEAD
+		} else if (pheadGetMpHead(mpheadnum) < 0) {
+			headnum = mpGetHeadId(MPHEAD_DARK_COMBAT);
+
+			g_Menus[g_MpPlayerNum].menumodel.newparams = MENUMODELPARAMS_SET_FILENUM(g_HeadsAndBodies[headnum].filenum);
+			g_Menus[g_MpPlayerNum].menumodel.isperfecthead = false;
+#endif
 		} else {
 			headnum = mpGetBeauHeadId(func0f14a9f8(mpheadnum - mpGetNumHeads2()));
 
@@ -2159,6 +2172,11 @@ MenuItemHandlerResult mpCharacterHeadMenuHandler(s32 operation, struct menuitem 
 		g_Menus[g_MpPlayerNum].menumodel.zoom = 30;
 		break;
 	case MENUOP_21:
+#if PERFECTHEAD
+		if (data->carousel.value >= mpGetNumHeads2()) {
+			return pheadGetMpHead(data->carousel.value) < 0;
+		}
+#endif
 		if (!challengeIsFeatureUnlocked(mpGetHeadRequiredFeature(data->carousel.value))) {
 			return 1;
 		}
@@ -5598,6 +5616,16 @@ struct menuitem g_MpPlayerSetup234MenuItems[] = {
 		0,
 		(void *)&g_MpCharacterMenuDialog,
 	},
+#if PERFECTHEAD
+	{
+		MENUITEMTYPE_SELECTABLE,
+		0,
+		0,
+		L_MPMENU_326, // "PerfectHead"
+		0,
+		pheadMenuEntryHandler,
+	},
+#endif
 	{
 		MENUITEMTYPE_SELECTABLE,
 		0,

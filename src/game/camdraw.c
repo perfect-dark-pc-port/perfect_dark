@@ -1,6 +1,7 @@
 #include <ultra64.h>
 #include "constants.h"
 #include "game/camdraw.h"
+#include "game/phead.h"
 #include "game/tex.h"
 #include "game/menu.h"
 #include "game/stubs/game_102230.h"
@@ -20,6 +21,48 @@
 #include "data.h"
 #include "types.h"
 #include "string.h"
+
+/**
+ * 8-bit textures loaded with LoadBlock on the N64 need the 32-bit words of every
+ * odd row swapped (TMEM interleave). The port's renderer reads textures
+ * linearly, so no swap is applied there.
+ */
+#ifdef PLATFORM_N64
+#define CAM_TMEMSWAP(row, col) ((((row) & 1)) ? ((((col) & 4)) ? -4 : 4) : 0)
+#else
+#define CAM_TMEMSWAP(row, col) 0
+#endif
+
+// The menu player whose screen gets the camera messages. The game assumed the
+// camera is on that player's own controller; PerfectHead lets any player use a
+// camera on any controller, so it gives the player using it.
+#if PERFECTHEAD
+#define CAM_MENUPLAYER(device) pheadMenuPlayer(device)
+#else
+#define CAM_MENUPLAYER(device) (device)
+#endif
+
+// New heads keep the base head's own hair unless the player picks a colour
+#if PERFECTHEAD
+#define PHEAD_DEFAULT_HAIRCOLOUR PHEAD_HAIRCOLOUR_NORMAL
+#else
+#define PHEAD_DEFAULT_HAIRCOLOUR 0
+#endif
+
+#if PERFECTHEAD
+// Auto exposure limits. Exposure is in the sensor's 16 us steps; Pan Docs
+// (Game Boy Camera) gives $0030 for objects in direct sunlight, which is also
+// the least allowed with the N bit set (pak0f11d118 sets it), $0300 out of
+// direct sunlight and $0800 for a room with good light. The longest is the
+// original exposure table's last entry used (var8007f904[80]). Gain is the
+// register 1 code: the Game Boy Camera ROM uses 0-10 (14-32 dB).
+#define CAM_MINEXPOSURE 0x0030
+#define CAM_MAXEXPOSURE 0x5eef
+#define CAM_MINGAIN     0
+#define CAM_STARTGAIN   4 // 20 dB
+#define CAM_MAXGAIN     10
+#define CAM_MAXSTEPS    8 // exposure steps per capture
+#endif
 
 struct camerafile {
 	u8 unk00[128];
@@ -242,7 +285,7 @@ void func0f149c90(struct textureconfig *tconfig)
 	for (y = 0; y < tconfig->height; y++) {
 		for (x = 0; x < tconfig->width; x++) {
 			s32 value = (x * 8 / tconfig->width) * 32;
-			s32 fudge = (y & 1) ? ((x & 4) ? -4 : 4) : 0;
+			s32 fudge = CAM_TMEMSWAP(y, x);
 
 			tconfig->textureptr[y * 64 + x + fudge] = value;
 		}
@@ -460,6 +503,10 @@ void pheadInit(void)
 		for (i = 0; i < 4; i++) {
 			func0f14ad58(i);
 		}
+
+#if PERFECTHEAD
+		pheadSlotsInit();
+#endif
 	}
 }
 
@@ -477,6 +524,10 @@ void pheadReset(void)
 	for (i = 0; i < 4; i++) {
 		var8007f8dc[i].unk0d4_03 = false;
 	}
+
+#if PERFECTHEAD
+	pheadStageReset();
+#endif
 }
 
 void func0f14a404(void)
@@ -717,7 +768,7 @@ void func0f14aac4(void)
 {
 	struct var8007f8e0 *thing = func0f14a06c(-1);
 
-	thing->colournum = 0;
+	thing->colournum = PHEAD_DEFAULT_HAIRCOLOUR;
 }
 
 s32 func0f14aae8(void)
@@ -1026,7 +1077,7 @@ void func0f14b228(struct var8007f8e0 *arg0)
 	arg0->unk034 = 0;
 	arg0->unk030 = 1.0f;
 	arg0->unk3f4_04 = false;
-	arg0->colournum = 0;
+	arg0->colournum = PHEAD_DEFAULT_HAIRCOLOUR;
 	arg0->stylenum = 0;
 	arg0->unk3a4 = 0;
 	arg0->unk3a8 = -1;
@@ -1078,6 +1129,56 @@ void func0f14b394(struct var8007f8e0 *arg0)
 	func0f14b228(arg0);
 }
 
+#if PERFECTHEAD
+/**
+ * Make the picture brighter (steps > 0) or darker by <steps> of about 5.5%,
+ * one step of the original exposure table. The exposure changes; the gain
+ * only changes once the exposure is at its shortest or longest. A gain step
+ * is 1.5 dB or more, several exposure steps, so after one the next capture is
+ * measured first, and the exposure makes the finer corrections after it.
+ */
+static void editor_step_exposure(struct var8007f8dc *thing, s32 steps)
+{
+	if (steps > CAM_MAXSTEPS) {
+		steps = CAM_MAXSTEPS;
+	}
+
+	if (steps < -CAM_MAXSTEPS) {
+		steps = -CAM_MAXSTEPS;
+	}
+
+	for (; steps < 0; steps++) {
+		if (thing->unk05c > CAM_MINEXPOSURE) {
+			thing->unk05c -= thing->unk05c / 18 + 1;
+
+			if (thing->unk05c < CAM_MINEXPOSURE) {
+				thing->unk05c = CAM_MINEXPOSURE;
+			}
+		} else if (thing->unk060 > CAM_MINGAIN) {
+			thing->unk060--;
+			return;
+		} else {
+			return;
+		}
+	}
+
+	for (; steps > 0; steps--) {
+		if (thing->unk05c < CAM_MAXEXPOSURE) {
+			thing->unk05c += thing->unk05c / 17 + 1;
+
+			if (thing->unk05c > CAM_MAXEXPOSURE) {
+				thing->unk05c = CAM_MAXEXPOSURE;
+			}
+		} else if (thing->unk060 < CAM_MAXGAIN) {
+			thing->unk060++;
+			return;
+		} else {
+			return;
+		}
+	}
+}
+#endif
+
 bool func0f14b484(s32 index)
 {
 	struct var8007f8dc *thing = &var8007f8dc[index];
@@ -1097,9 +1198,24 @@ bool func0f14b484(s32 index)
 		thing->unk028 = 15;
 	}
 
+#if PERFECTHEAD
+	// osGetCount wraps every 92 seconds
+	if (thing->unk028 <= 0) {
+		thing->unk028 = 1;
+	}
+#endif
+
 	thing->unk03c = thing->unk04c - thing->unk050;
 	thing->unk01c = thing->unk03c;
+#if PERFECTHEAD
+	// @bug: The derivative term used the error itself divided by the time step
+	// (unk03c / unk028) instead of the error's rate of change. Together with
+	// the minus sign below this pushes exposure the wrong way whenever frames
+	// arrive faster than about every 0.47 s, so the picture runs away to white.
+	thing->unk018 = (thing->unk03c - thing->unk038) / thing->unk028;
+#else
 	thing->unk018 = thing->unk03c / thing->unk028;
+#endif
 	thing->unk014 += thing->unk03c * thing->unk028;
 
 	if (thing->unk014 > 500) {
@@ -1110,11 +1226,38 @@ bool func0f14b484(s32 index)
 		thing->unk014 = -500;
 	}
 
+#if PERFECTHEAD
+	// Standard PID: the derivative term damps the correction
+	thing->unk034 = thing->unk010 * thing->unk018;
+	thing->unk02c = thing->unk008 * thing->unk01c;
+	thing->unk030 = thing->unk00c * thing->unk014;
+	thing->unk040 = -thing->unk004 * (thing->unk034 + thing->unk02c + thing->unk030);
+#else
 	thing->unk034 = thing->unk010 * -1.0f * thing->unk018;
 	thing->unk02c = thing->unk008 * thing->unk01c;
 	thing->unk030 = thing->unk00c * thing->unk014;
 	thing->unk040 = -thing->unk004 * ((thing->unk010 * -1.0f * thing->unk018) + thing->unk008 * thing->unk01c + thing->unk00c * thing->unk014);
+#endif
 
+#if PERFECTHEAD
+	// @bug: The exposure was set from the table entry unk054, which still
+	// pointed at entry 30 (0x085a) after calibration had found the exposure,
+	// so the first correction threw that away; the table's shortest exposure
+	// (0x0200) is too long for a bright room; and the gain could never change,
+	// as unk054 was clamped to the table before the checks for running off it.
+	// In bright light the picture stayed white. The exposure is now stepped
+	// from where it is, with the gain at the limits (editor_step_exposure).
+	if (thing->unk000) {
+		if (ABS(thing->unk03c) > 10.0f) {
+			if (ABS(thing->unk040) >= 1.0f) {
+				editor_step_exposure(thing, (s32)thing->unk040);
+				thing->unk014 = 0.0f;
+			}
+		} else {
+			thing->unk014 = 0.0f;
+		}
+	}
+#else
 	if (thing->unk000) {
 		if (ABS(thing->unk03c) > 10.0f) {
 			if (ABS(thing->unk040) >= 1.0f) {
@@ -1162,6 +1305,7 @@ bool func0f14b484(s32 index)
 			thing->unk014 = 0.0f;
 		}
 	}
+#endif
 
 	if (thing->unk04c < 70 || thing->unk04c > 160) {
 		return false;
@@ -1275,7 +1419,14 @@ void func0f14bc04(void)
 
 	func0f14def0(-1, 2433, "camdraw.c");
 
+#if PERFECTHEAD
+	// The thumbnail is made from the camera's capture buffer, which only
+	// exists while the camera is running. A head loaded from the Controller
+	// Pak brings its own thumbnail (pheadLoadFile).
+	if (thing2->unk100 != 4 && var800a45a0->unk470 != NULL) {
+#else
 	if (thing2->unk100 != 4) {
+#endif
 		phead0f14dac0(var800a45a0->unk470, &thing1->unk010);
 	}
 
@@ -1347,13 +1498,13 @@ void func0f14bdbc(s32 index)
 
 	if (value == 4 || value == 5) {
 		thing->unk0f4 = 6;
-		g_MpPlayerNum = index;
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 		menuSetBanner(-1, false);
 
 		thing2 = func0f14a06c(-1);
 		thing2->unk3f4_00 = false;
 
-		g_MpPlayerNum = index;
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 
 		menuPopDialog();
 
@@ -1381,6 +1532,28 @@ void func0f14bec8(s32 index)
 		pak0f11d9c4(index, NULL, thing->unk098, 0);
 		thing->unk0f4 = 2;
 
+#if PERFECTHEAD
+		// The camera's state vector is indexed by memory slot and holds that
+		// slot's album number (0xff = free). The original took the album number
+		// as the slot, which only holds until a picture is deleted on the
+		// camera. List the pictures in album order, each read from its own slot
+		// (slot i is at SRAM 0x2000 + i * 0x1000, location i + 2).
+		thing->unk094 = 0;
+
+		{
+			s32 albumnum;
+
+			for (albumnum = 0; albumnum < ARRAYCOUNT(thing->unk098); albumnum++) {
+				for (i = 0; i < ARRAYCOUNT(thing->unk098); i++) {
+					if (thing->unk098[i] == albumnum) {
+						thing->unk0b6[thing->unk094] = i + 2;
+						thing->unk094++;
+						break;
+					}
+				}
+			}
+		}
+#else
 		for (i = 0; i < ARRAYCOUNT(thing->unk098); i++) {
 			if (thing->unk098[i] != 0xff) {
 				thing->unk098[i] += 2;
@@ -1393,6 +1566,7 @@ void func0f14bec8(s32 index)
 				thing->unk094++;
 			}
 		}
+#endif
 
 		for (i = thing->unk094; i < ARRAYCOUNT(thing->unk0b6); i++) {
 			thing->unk0b6[i] = 0xff;
@@ -1422,11 +1596,11 @@ void func0f14bec8(s32 index)
 		func0f14a16c(3);
 		func0f14bc04();
 		pak0f11d478(func0f14a5a4());
-		g_MpPlayerNum = index;
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 		menuSetBanner(-1, false);
 		func0f14a678();
 		thing2->unk3f4_00 = true;
-		g_MpPlayerNum = index;
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 		stub0f102230();
 		g_MpPlayerNum = 0;
 		thing->unk0f4 = 6;
@@ -1464,6 +1638,13 @@ void func0f14c1cc(s32 index)
 		break;
 	case 3:
 		thing->unk080 = -1;
+
+#if PERFECTHEAD
+		// An empty album (count 0) would divide by zero below, which traps
+		if (count == 0) {
+			max = 0;
+		}
+#endif
 
 		for (i = 0; i < max; i++) {
 			s32 a = (thing->unk074 + i) % count;
@@ -1526,7 +1707,7 @@ void func0f14c3a4(s32 index)
 void func0f14c4c0(s32 index)
 {
 	var8007f8dc[index].unk0f4 = 4;
-	g_MpPlayerNum = index;
+	g_MpPlayerNum = CAM_MENUPLAYER(index);
 
 	menuSetBanner(MENUBANNER_DOWNLOADINGIMAGE, false);
 }
@@ -1574,7 +1755,7 @@ void func0f14c50c(struct var8007f8e0 *dst, struct var8007f8e0 *src, u32 line, ch
 	if (dst->unk01c) {
 		for (j = 63, m = 0, l = 63 * 64; (l ^ 0) != -0x40;) {
 			for (k = 0; k != 64;) {
-				s32 fudge = (j & 1) ? ((k & 4) ? -4 : 4) : 0;
+				s32 fudge = CAM_TMEMSWAP(j, k);
 				u8 tmp = *(u8 *)(src->unk004.texturenum + (0, fudge) + l + k);
 
 				dst->unk01c[m + k] = tmp;
@@ -1728,7 +1909,7 @@ void func0f14ce84(void)
 
 void func0f14cf6c(void)
 {
-	g_MpPlayerNum = 0;
+	g_MpPlayerNum = CAM_MENUPLAYER(0);
 
 	menuSetBanner(-1, false);
 
@@ -1740,7 +1921,7 @@ void func0f14cf6c(void)
 		case 5:
 		case 6:
 			pak0f1171b4(func0f14a5a4(), PAK00C_03, 0);
-			g_MpPlayerNum = 0;
+			g_MpPlayerNum = CAM_MENUPLAYER(0);
 			menuSetBanner(-1, false);
 			break;
 		}
@@ -1758,8 +1939,14 @@ void func0f14d064(s32 index, u8 *arg1)
 	if (thing->unk0f8 == 1) {
 		thing->unk05c = 0x4000;
 		thing->unk064 = 0x2000;
+#if PERFECTHEAD
+		// Start at 20 dB, within the Game Boy Camera ROM's own 14-32 dB
+		// (Pan Docs) rather than at 23 dB
+		thing->unk060 = CAM_STARTGAIN;
+#else
 		thing->unk060 = 6;
-		g_MpPlayerNum = index;
+#endif
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 		menuSetBanner(MENUBANNER_CALIBRATINGCAMERA, false);
 		func0f14a16c(1);
 		pak0f1171b4(func0f14a5a4(), PAK00C_01, 1);
@@ -1793,7 +1980,11 @@ void func0f14d064(s32 index, u8 *arg1)
 	if (thing->unk0f8 == 2) {
 		func0f14cdb8(index, arg1);
 
+#if PERFECTHEAD
+		if (thing->unk060 >= CAM_MAXGAIN || thing->unk04c > 120) {
+#else
 		if (thing->unk060 == 12 || thing->unk04c > 120) {
+#endif
 			thing->unk0f8 = 6;
 		} else {
 			thing->unk060 += 2;
@@ -1804,7 +1995,7 @@ void func0f14d064(s32 index, u8 *arg1)
 		pak0f1171b4(func0f14a5a4(), PAK00C_03, 0);
 		thing->unk0f8 = 6;
 		thing->unk100 = thing->unk0fc;
-		g_MpPlayerNum = index;
+		g_MpPlayerNum = CAM_MENUPLAYER(index);
 		menuSetBanner(-1, false);
 		pak0f1171b4(func0f14a5a4(), PAK00C_03, 0);
 		var8007f8dc[var800a45a0->unk000].unk0d4_04 = true;
@@ -2104,7 +2295,7 @@ void func0f14dc30(s32 index, bool arg1)
 				f12 = 255.0f;
 			}
 
-			thing->unk004.textureptr[(u32)(63 - y) * 64 + j + (((u32)(63 - y) & 1) ? ((j & 4) ? -4 : 4) : 0)] = f12;
+			thing->unk004.textureptr[(u32)(63 - y) * 64 + j + CAM_TMEMSWAP((u32)(63 - y), j)] = f12;
 		}
 	}
 }
@@ -2140,11 +2331,11 @@ s32 func0f14dfc0(struct var8007f8e0 *arg0, s32 arg1, s32 arg2)
 	s32 j;
 	s32 len;
 
-	sp28[0] = *(arg0->unk004.textureptr + arg2 * 64 + ((arg2 & 1) ? ((arg1 & 4) ? -4 : 4) : 0) + arg1);
-	sp28[1] = *(arg0->unk004.textureptr + (arg2 - 1) * 64 + (((arg2 - 1) & 1) ? ((arg1 & 4) ? -4 : 4) : 0) + arg1);
-	sp28[2] = *(arg0->unk004.textureptr + arg2 * 64 + ((arg2 & 1) ? (((arg1 - 1) & 4) ? -4 : 4) : 0) + arg1 - 1);
-	sp28[3] = *(arg0->unk004.textureptr + (arg2 + 1) * 64 + (((arg2 + 1) & 1) ? ((arg1 & 4) ? -4 : 4) : 0) + arg1);
-	sp28[4] = *(arg0->unk004.textureptr + arg2 * 64 + ((arg2 & 1) ? (((arg1 + 1) & 4) ? -4 : 4) : 0) + arg1 + 1);
+	sp28[0] = *(arg0->unk004.textureptr + arg2 * 64 + CAM_TMEMSWAP(arg2, arg1) + arg1);
+	sp28[1] = *(arg0->unk004.textureptr + (arg2 - 1) * 64 + CAM_TMEMSWAP(arg2 - 1, arg1) + arg1);
+	sp28[2] = *(arg0->unk004.textureptr + arg2 * 64 + CAM_TMEMSWAP(arg2, arg1 - 1) + arg1 - 1);
+	sp28[3] = *(arg0->unk004.textureptr + (arg2 + 1) * 64 + CAM_TMEMSWAP(arg2 + 1, arg1) + arg1);
+	sp28[4] = *(arg0->unk004.textureptr + arg2 * 64 + CAM_TMEMSWAP(arg2, arg1 + 1) + arg1 + 1);
 
 	len = 0;
 
@@ -2170,6 +2361,21 @@ s32 func0f14dfc0(struct var8007f8e0 *arg0, s32 arg1, s32 arg2)
 	return (sp3c[1] + sp3c[2] + sp3c[3]) / 3;
 }
 
+#if PERFECTHEAD
+/**
+ * Position Image lets the crop rectangle reach past the 64x64 picture (the
+ * painter shows the head's own skin there). These routines index the picture
+ * by the crop, so give them the part inside it: the range the crop always had.
+ */
+static void camdrawClampCrop(s32 *x1, s32 *y1, s32 *x2, s32 *y2)
+{
+	if (*x1 < 0) *x1 = 0;
+	if (*y1 < 0) *y1 = 0;
+	if (*x2 > 64) *x2 = 64;
+	if (*y2 > 64) *y2 = 64;
+}
+#endif
+
 void func0f14e1c4(struct var8007f8e0 *arg0)
 {
 	s32 spbc;
@@ -2188,6 +2394,10 @@ void func0f14e1c4(struct var8007f8e0 *arg0)
 	s32 i;
 
 	func0f14ecd8(&spbc, &spb8, &spb4, &spb0);
+
+#if PERFECTHEAD
+	camdrawClampCrop(&spbc, &spb8, &spb4, &spb0);
+#endif
 
 	mid1 = (u32) (spb0 + spb8) >> 1;
 	mid2 = (u32) (spb4 + spbc) >> 1;
@@ -2212,10 +2422,10 @@ void func0f14e1c4(struct var8007f8e0 *arg0)
 			s32 x1 = spbc + i;
 			s32 x2 = spb4 - i;
 
-			arg0->unk004.textureptr[y1 * 64 + x1 + ((y1 & 1) ? ((x1 & 4) ? -4 : 4) : 0)] = value1;
-			arg0->unk004.textureptr[y2 * 64 + x1 + ((y2 & 1) ? ((x1 & 4) ? -4 : 4) : 0)] = value1;
-			arg0->unk004.textureptr[y1 * 64 + x2 + ((y1 & 1) ? ((x2 & 4) ? -4 : 4) : 0)] = value2;
-			arg0->unk004.textureptr[y2 * 64 + x2 + ((y2 & 1) ? ((x2 & 4) ? -4 : 4) : 0)] = value2;
+			arg0->unk004.textureptr[y1 * 64 + x1 + CAM_TMEMSWAP(y1, x1)] = value1;
+			arg0->unk004.textureptr[y2 * 64 + x1 + CAM_TMEMSWAP(y2, x1)] = value1;
+			arg0->unk004.textureptr[y1 * 64 + x2 + CAM_TMEMSWAP(y1, x2)] = value2;
+			arg0->unk004.textureptr[y2 * 64 + x2 + CAM_TMEMSWAP(y2, x2)] = value2;
 		}
 	}
 }
@@ -2245,6 +2455,10 @@ f32 func0f14e4ac(s32 arg0, s32 *arg1, s32 *arg2)
 	f32 result;
 
 	func0f14ecd8(&sp98, &sp94, &sp90, &sp8c);
+
+#if PERFECTHEAD
+	camdrawClampCrop(&sp98, &sp94, &sp90, &sp8c);
+#endif
 
 	if (arg1 != NULL) {
 		*arg1 = 0;
@@ -2403,8 +2617,13 @@ void func0f14e884(struct textureconfig *tconfig, s32 numrows, s32 arg2, u64 arg3
 		bitsperpixel = 32;
 		numbytes = tconfig->width * 4 * numrows;
 		break;
+#ifndef PLATFORM_N64
+	default: // the four sizes are all a texture can have
+		return;
+#endif
 	}
 
+#ifdef PLATFORM_N64
 	sp40 = ((arg2 % pixelsperdword) * bitsperpixel);
 	sp40 = (0x40 - sp40 - bitsperpixel) & 0x3f;
 
@@ -2414,6 +2633,29 @@ void func0f14e884(struct textureconfig *tconfig, s32 numrows, s32 arg2, u64 arg3
 
 	sp34 = (s64 *)(tconfig->textureptr + ((sp5c >> 3) + (numbytes >> 3)) * 8);
 	*sp34 = (*sp34 & ~(mask << sp40)) + (arg3 << sp40);
+#else
+	// The port's textures are linear (no odd-row TMEM swap) and keep the N64's
+	// big-endian texel order, so write the texel's bytes/nibble directly
+	// instead of doing a host-endian 64-bit read-modify-write.
+	{
+		u8 *dst = tconfig->textureptr + numbytes + sp5c;
+
+		if (bitsperpixel == 4) {
+			if (arg2 & 1) {
+				*dst = (*dst & 0xf0) | (arg3 & 0xf);
+			} else {
+				*dst = (*dst & 0x0f) | ((arg3 & 0xf) << 4);
+			}
+		} else {
+			s32 i;
+
+			for (i = bitsperpixel / 8 - 1; i >= 0; i--) {
+				dst[i] = arg3 & 0xff;
+				arg3 >>= 8;
+			}
+		}
+	}
+#endif
 }
 
 Gfx *func0f14eb04(Gfx *gdl, s32 arg1, s32 arg2, s32 arg3, s32 arg4, s32 arg5)
@@ -3187,10 +3429,19 @@ bool pheadLoadFile(s8 device, s32 fileid, u16 serial, s32 arg3)
 		s0->unk3b8 = file.unk84;
 		s0->colournum = file.unk8c;
 		s0->stylenum = file.unk8d;
+#if PERFECTHEAD
+		// Signed, so a crop reaching past the picture (Position Image) comes
+		// back as saved; older files only have 0 to 64
+		s0->unk3c0 = (s8) file.unk86;
+		s0->unk3c4 = (s8) file.unk87;
+		s0->unk3c8 = (s8) file.unk88;
+		s0->unk3cc = (s8) file.unk89;
+#else
 		s0->unk3c0 = file.unk86;
 		s0->unk3c4 = file.unk87;
 		s0->unk3c8 = file.unk88;
 		s0->unk3cc = file.unk89;
+#endif
 		s0->unk3ec = file.unk8a;
 		s0->unk3f0 = file.unk8b;
 		s0->unk3f4_03 = true;

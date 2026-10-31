@@ -286,6 +286,11 @@ char var80078078nb[] = "PerfDark";
 char var80078084nb[] = "GAMEBOYCAMERA";
 #endif
 
+#if VERSION >= VERSION_NTSC_1_0 && PERFECTHEAD
+char g_GbCameraTitleJpn[] = "POCKETCAMERA";
+char g_GbCameraTitle[] = "GAMEBOYCAMERA";
+#endif
+
 u32 var80075ccc = 0x00000400;
 u32 g_PakHasEeprom = false;
 u32 var80075cd4 = 0x00000000;
@@ -3518,7 +3523,13 @@ s32 pak0f11b86c(s8 device, u32 offset, u8 *data, struct pakfileheader *header, s
 	u32 blocksize;
 	u32 alignedfilelen;
 	u32 stack[3];
+#ifdef AVOID_UB
+	// pakRetrieveBlockFromCache copies a whole block, which is 32 bytes on a
+	// Controller Pak
+	u8 buffer[0x20];
+#else
 	u8 buffer[16];
+#endif
 	s32 offsetinblock;
 	s32 blocknum;
 	u8 sp58[128];
@@ -4946,7 +4957,7 @@ void pak0f11d110(void)
 }
 #endif
 
-#if VERSION < VERSION_NTSC_1_0
+#if VERSION < VERSION_NTSC_1_0 || PERFECTHEAD
 u32 pak0f116d1cnb(s8 device)
 {
 	u8 readbuffer[0x40];
@@ -4969,14 +4980,34 @@ u32 pak0f116d1cnb(s8 device)
 }
 #endif
 
+#if PERFECTHEAD
+#define PHEAD_CAM_REG4 0x03 // E = 50%, I = 0, V = 1.5 V
+#define PHEAD_CAM_REG5 0xa5 // Z = positive, O = +5 * 32 mV
+#endif
+
 void pak0f11d118(u8 *arg0, u8 arg1, u32 arg2)
 {
 	arg0[0] = 2;
 	arg0[1] = 0xe4;
 	arg0[2] = 0x10;
 	arg0[3] = 0;
+#if PERFECTHEAD
+	// @bug: arg1 is byte 8 of the camera's calibration vector (unk2b9), a
+	// black-level threshold the Game Boy Camera ROM writes to its save RAM
+	// (typically 0x7c or 0x7d), but it was written to the sensor as the
+	// reference voltage V and the offset O: about 2.5 V and +0.9 V instead of
+	// the camera's 1.5 V and +0.06 to +0.48 V. Black then sat above every
+	// threshold and the live picture was white on real cameras. Use the Game
+	// Boy Camera's own live values: register 7 (A004) 0x03 = edge ratio 50%,
+	// not inverted, V = 1.5 V; register 0 (A005) Z = positive with
+	// O = +160 mV, in the middle of the offsets the camera finds for itself.
+	// (Raphael Boichot's Game Boy Camera disassembly, docs/19_sensor_guide.md)
+	arg0[4] = PHEAD_CAM_REG4;
+	arg0[5] = PHEAD_CAM_REG5;
+#else
 	arg0[4] = arg1 & 7;
 	arg0[5] = (arg1 & 0x3f) + 0x80;
+#endif
 
 	pak0f11d214(&arg0[6], arg2);
 }
@@ -5138,7 +5169,7 @@ void pak0f11d678(void)
 }
 #endif
 
-#if VERSION < VERSION_NTSC_1_0
+#if VERSION < VERSION_NTSC_1_0 || PERFECTHEAD
 void gbpak0f1172c8nb(s8 device, s32 arg1)
 {
 	u8 buffer[0x20];
@@ -5284,6 +5315,23 @@ void pak0f11d9c4(s8 device, u8 *arg1, u8 *arg2, u32 arg3)
 			for (i = 0; i < 30; i++) {
 				arg2[i] = src[i];
 			}
+
+#if PERFECTHEAD
+			// The camera writes "Magic" after the state vector once it has set
+			// its save up. Without it (a camera never switched on, or a blank
+			// save) the vector is junk: treat the album as empty.
+			for (i = 0; i < 5; i++) {
+				if (g_Paks[device].unk2c4[0x1d0 + i] != "Magic"[i]) {
+					break;
+				}
+			}
+
+			if (i < 5) {
+				for (i = 0; i < 30; i++) {
+					arg2[i] = 0xff;
+				}
+			}
+#endif
 		}
 		break;
 	case PAK00C_01:
@@ -5613,13 +5661,15 @@ void pakTickState(s8 device)
 		g_Paks[device].state = PAKSTATE_READY;
 		break;
 	case PAKSTATE_12:
-#if VERSION >= VERSION_NTSC_1_0
+#if VERSION >= VERSION_NTSC_1_0 && !PERFECTHEAD
 		g_Paks[device].state = PAKSTATE_READY;
 #else
+		// Game Boy Camera capture: advance the capture state machine by one
+		// step per frame. joy00014238 moves PAKSTATE_13 back to READY.
 		if (g_Paks[device].type == PAKTYPE_GAMEBOY) {
-			joyDisableCyclicPolling(5960, "pak.c");
+			joyDisableCyclicPolling(JOYARGS(5960));
 			pak0f117f94nb(device);
-			joyEnableCyclicPolling(5962, "pak.c");
+			joyEnableCyclicPolling(JOYARGS(5962));
 
 			g_Paks[device].state = PAKSTATE_13;
 		} else {
@@ -5732,7 +5782,7 @@ void pak0f11e3b4(void)
 }
 #endif
 
-#if VERSION < VERSION_NTSC_1_0
+#if VERSION < VERSION_NTSC_1_0 || PERFECTHEAD
 s32 gbpakIdentifyGame(s8 device);
 
 void pak0f117f94nb(s8 device)
@@ -6069,6 +6119,26 @@ s32 gbpakIdentifyGame(s8 device)
 		ok = false;
 	} else {
 		poweredon = true;
+	}
+#endif
+
+#if PERFECTHEAD
+	// Restored from NTSC beta: recognise the Game Boy Camera. The pak is left
+	// powered on because the capture state machine (pak0f117f94nb) talks to
+	// the camera's registers straight after this.
+	// The beta's check is kept: Nintendo's licensee code and a title starting
+	// with POCKETCAMERA or GAMEBOYCAMERA (prefix match, so longer titles of
+	// other editions pass too). Any cart with the camera's mapper is accepted
+	// as well, whatever its header says.
+	if (ret == PAK_ERR1_OK
+			&& (id.cart_type == GBCART_POCKETCAMERA
+				|| (id.company_code == GBCAMERA_COMPANYCODE
+					&& (gbpakStrcmp(g_GbCameraTitleJpn, (char *) id.game_title)
+						|| gbpakStrcmp(g_GbCameraTitle, (char *) id.game_title))))) {
+		g_Paks[device].isgbcamera = true;
+		g_Paks[device].isgbpd = false;
+		joyEnableCyclicPolling();
+		return GBGAME_CAMERA;
 	}
 #endif
 

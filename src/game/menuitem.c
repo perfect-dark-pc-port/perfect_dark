@@ -668,6 +668,12 @@ Gfx *menuitemListRender(Gfx *gdl, struct menurendercontext *context)
 
 		// "< Empty >"
 		gdl = textRenderProjected(gdl, &x, &y, langGet(L_OPTIONS_313), chars, font, colour, context->width - left + context->x, viGetHeight(), sp128, 0);
+
+#if PERFECTHEAD
+		// The list's scissor was left in place, hiding the items after it
+		// (PerfectHead's "<none>" and Cancel)
+		gdl = menuApplyScissor(gdl);
+#endif
 	}
 
 	gdl = text0f153780(gdl);
@@ -1973,6 +1979,12 @@ Gfx *menuitemObjectivesRender(Gfx *gdl, struct menurendercontext *context)
 	return gdl;
 }
 
+#if PERFECTHEAD
+// The height the menu gave the model item being rendered (it can be less than
+// the item asked for when the dialog doesn't fit), for PerfectHead's handlers
+s32 g_MenuItemRenderHeight;
+#endif
+
 Gfx *menuitemModelRender(Gfx *gdl, struct menurendercontext *context)
 {
 	if (context->item->flags & MENUITEMFLAG_LIST_CUSTOMRENDER) {
@@ -1997,6 +2009,9 @@ Gfx *menuitemModelRender(Gfx *gdl, struct menurendercontext *context)
 		}
 
 		renderdata.unk10 = true;
+#if PERFECTHEAD
+		g_MenuItemRenderHeight = context->height;
+#endif
 
 		data.type19.gdl = gdl;
 		data.type19.unk04 = (intptr_t)&renderdata;
