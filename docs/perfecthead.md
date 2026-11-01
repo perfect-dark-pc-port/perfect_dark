@@ -382,6 +382,24 @@ PerfectHead needs the Expansion Pak (8 MB), like the camera engine itself.
 - **Capturing:** each capture step re-identifies the Game Boy pak (as the beta
   did), a few extra controller transfers per frame while the camera menus are
   open.
+- **Live picture (Take Picture):** each picture takes about 8 frames: start
+  the capture, wait for the sensor, download it over the Transfer Pak in four
+  steps (one per frame), then process it. The Transfer Pak is the limit: the
+  download is 112 transfers of 32 bytes, each a round trip the game waits for.
+  Changes from the original, all behind `PERFECTHEAD`:
+  - The picture is blurred and halved with a separable integer filter
+    (`editor_make_texture_type3`) instead of a 5x5 float blur over 128x128
+    pixels: about 72,000 integer multiply-adds instead of 410,000 float ones,
+    which made the menus stutter on every picture. The result is within 1 of
+    the original's.
+  - The brightness measure and the album thumbnail sum in integers (the same
+    results).
+  - Fewer Transfer Pak transfers per picture: the calibration vector is no
+    longer read before every capture (4 fewer), the capture check reads 32
+    bytes (1 fewer per check), and only the 128x112 picture is downloaded
+    (16 fewer). The rows above and below the live picture are now plain.
+  - The next capture starts as soon as a picture is processed, not on the
+    next frame.
 - **Split screen:** four players with four different PerfectHeads add about
   4 × 16 KB of stage pool to the normal head models.
 

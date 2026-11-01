@@ -4887,12 +4887,19 @@ bool gbpak0f11cef8(s8 device)
 {
 	struct pak *pak = &g_Paks[device];
 	u8 spac[32];
+#if !PERFECTHEAD
 	u8 sp8c[32];
 	u8 sp6c[32];
+#endif
 	u8 sp2c[64];
 	s32 i;
 
 	if (pak->type == PAKTYPE_GAMEBOY) {
+#if PERFECTHEAD
+		// The calibration vector isn't used for the sensor any more
+		// (pak0f11d118), so don't read both copies before every capture: four
+		// Transfer Pak transfers that the game waits for
+#else
 		for (i = 0; i < (s32)sizeof(spac); i++) {
 			spac[i] = 2;
 		}
@@ -4916,6 +4923,7 @@ bool gbpak0f11cef8(s8 device)
 		if (!gbpakRead(device, 0xbfe0, sp6c, sizeof(sp6c))) {
 			return false;
 		}
+#endif
 
 		for (i = 0; i < (s32)sizeof(spac); i++) {
 			spac[i] = 16;
@@ -4929,11 +4937,13 @@ bool gbpak0f11cef8(s8 device)
 			sp2c[i] = 0;
 		}
 
+#if !PERFECTHEAD
 		pak->unk2ba = sp8c[26];
 		pak->unk2bb = sp6c[26];
 		pak->unk2b9 = (pak->unk2ba == pak->unk2bb ? pak->unk2ba : pak->unk2bb);
 
 		if (pak->unk2b9);
+#endif
 
 		pak0f11d118(sp2c, pak->unk2b9, func0f14aa70());
 		pak0f11d174(device, sp2c);
@@ -4972,7 +4982,12 @@ u32 pak0f116d1cnb(s8 device)
 		return 0;
 	}
 
+#if PERFECTHEAD
+	// Only A000's capture bit is wanted: one 32-byte transfer, not two
+	if (gbpakRead(device, 0xa000, readbuffer, 0x20) == 0) {
+#else
 	if (gbpakRead(device, 0xa000, readbuffer, sizeof(readbuffer)) == 0) {
+#endif
 		return 0;
 	}
 
@@ -5206,8 +5221,19 @@ bool gbpak0f11d680(s8 device, bool arg1)
 		size = 0x80;
 		break;
 	case PAK00C_03:
+#if PERFECTHEAD
+		// Only the 128x112 picture (0xe00 bytes) in the same four steps, not
+		// the 4 KB around it: 16 fewer Transfer Pak transfers per picture. The
+		// live capture is at 0x100 in bank 0 (unk270 0); an album photo
+		// (unk270 = slot + 2) starts its slot, and pak0f11d9c4 moves it down
+		// and blacks out the rows past it. The rest of the buffer is cleared
+		// before each download.
+		offset = (g_Paks[device].unk270 == 0 ? 0x100 : 0) + g_Paks[device].unk278 * (0xe00 / 4);
+		size = 0xe00 / 4;
+#else
 		offset = g_Paks[device].unk278 * var80075ccc;
 		size = var80075ccc;
+#endif
 		break;
 	}
 

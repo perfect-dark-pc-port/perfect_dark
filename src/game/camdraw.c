@@ -1377,6 +1377,15 @@ void func0f14b8ac(s32 index)
 			if (!func0f14a8e8()) {
 				func0f14b484(var800a45a0->unk000);
 			}
+
+#if PERFECTHEAD
+			// Start the next capture now, with the exposure just set, rather
+			// than on the next frame (PAK008_01 above): one frame less per
+			// live picture. The same checks as at the top of this function.
+			if (!thing->unk0d4_00 && (thing->unk0f8 != 0 || var8007f8dc[var800a45a0->unk000].unk0d4_04)) {
+				pak0f11d4dc(func0f14a5a4());
+			}
+#endif
 			break;
 		}
 	} else {
@@ -1870,6 +1879,9 @@ void func0f14cdb8(s32 index, u8 *arg1)
 	s32 count;
 	s32 i;
 	s32 j;
+#if PERFECTHEAD
+	s32 sum = 0; // the float sum was stored back on every pixel; exact either way
+#endif
 
 	var8007f8dc[index].unk04c = 0;
 
@@ -1878,9 +1890,17 @@ void func0f14cdb8(s32 index, u8 *arg1)
 	for (i = 0x1000; i < 0x3000; i += 0x80) {
 		for (j = 0x20; j < 0x60; j++) {
 			count++;
+#if PERFECTHEAD
+			sum += arg1[i + j];
+#else
 			var8007f8dc[index].unk04c += arg1[i + j];
+#endif
 		}
 	}
+
+#if PERFECTHEAD
+	var8007f8dc[index].unk04c = sum;
+#endif
 
 	if (count > 0) {
 		var8007f8dc[index].unk04c /= count;
@@ -2051,6 +2071,59 @@ void func0f14d2c8(u8 *arg0, u8 *arg1)
 /**
  * Generate a 64x64 thumbnail from a 128x128 source.
  */
+#if PERFECTHEAD
+/**
+ * The original (below) blurs the 128x128 picture with a 5x5 Gaussian in
+ * floats, clamping every tap, then averages each 2x2 block into the 64x64
+ * picture: about 410,000 float multiply-adds per live picture, tens of
+ * milliseconds on the N64's CPU. Its kernel is separable (0.0545 0.244 0.403
+ * 0.244 0.0545 each way, here 14 63 102 63 14 out of 256), and blurring then
+ * averaging pairs is the same as one 6-tap filter at a step of two
+ * (14 77 165 165 77 14), so this does rows then columns in integers: about
+ * 72,000 multiply-adds. Edges repeat as before, and every output is within 1
+ * of the original's.
+ */
+void func0f14d4f0(u8 *src, u8 *dst)
+{
+	static const s16 weights[6] = { 14, 77, 165, 165, 77, 14 };
+	u16 *rows = (u16 *) var800a45a0->unk478; // 128 rows x 63 columns, filtered across
+	s32 x;
+	s32 y;
+	s32 t;
+
+	for (y = 0; y < 128; y++) {
+		u8 *row = &src[y * 128];
+
+		for (x = 0; x < 63; x++) {
+			s32 sum = 0;
+
+			for (t = 0; t < 6; t++) {
+				s32 col = x * 2 - 2 + t;
+
+				sum += weights[t] * row[col < 0 ? 0 : col];
+			}
+
+			// At most 255 * 512 / 4
+			rows[y * 63 + x] = sum >> 2;
+		}
+	}
+
+	for (y = 0; y < 63; y++) {
+		for (x = 0; x < 63; x++) {
+			s32 sum = 0;
+
+			for (t = 0; t < 6; t++) {
+				s32 r = y * 2 - 2 + t;
+
+				sum += weights[t] * rows[(r < 0 ? 0 : r) * 63 + x];
+			}
+
+			// 512 * 512 / 4 = 65536 in all; truncated like the original
+			dst[y * 64 + x] = sum >> 16;
+		}
+	}
+}
+#else
 void func0f14d4f0(u8 *src, u8 *dst)
 {
 	f32 *s1 = (f32 *) var800a45a0->unk474;
@@ -2115,6 +2188,7 @@ void func0f14d4f0(u8 *src, u8 *dst)
 		}
 	}
 }
+#endif
 
 void func0f14d714(u8 *arg0, u8 *arg1)
 {
@@ -2224,12 +2298,23 @@ void phead0f14dac0(u8 *arg0, struct textureconfig *arg1)
 	for (i = 0; i < 16; i++) {
 		for (j = 0; j < 16; j++) {
 			f32 f12 = 0.0f;
+#if PERFECTHEAD
+			s32 sum = 0; // integer adds; the same result
+#endif
 
 			for (k = 0; k < 8; k++) {
 				for (l = 0; l < 8; l++) {
+#if PERFECTHEAD
+					sum += arg0[(i * 8 + l) * 128 + j * 8 + k];
+#else
 					f12 += arg0[(i * 8 + l) * 128 + j * 8 + k];
+#endif
 				}
 			}
+
+#if PERFECTHEAD
+			f12 = sum;
+#endif
 
 			f12 *= 0.015625f;
 
