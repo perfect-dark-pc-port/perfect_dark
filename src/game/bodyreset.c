@@ -11,6 +11,9 @@
 #include "lib/rng.h"
 #include "data.h"
 #include "types.h"
+#if PERFECTHEAD
+#include "game/phead.h"
+#endif
 
 void bodiesReset(s32 stagenum)
 {
@@ -114,4 +117,8 @@ void bodiesReset(s32 stagenum)
 
 	for (i = 0; i < g_NumActiveHeadsPerGender; i++);
 	for (i = 0; i < g_NumActiveHeadsPerGender; i++);
+
+#if PERFECTHEAD
+	pheadAddMissionHeads(g_ActiveMaleHeads, g_ActiveFemaleHeads, g_NumActiveHeadsPerGender);
+#endif
 }

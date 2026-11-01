@@ -28,6 +28,9 @@
 #include "lib/lib_317f0.h"
 #include "data.h"
 #include "types.h"
+#if PERFECTHEAD
+#include "game/phead.h"
+#endif
 #include "fs.h"
 #include "system.h"
 #include "mpsetups.h"
@@ -2573,7 +2576,12 @@ s32 mpGetHeadRequiredFeature(u8 headnum)
 
 s32 mpGetBeauHeadId(u8 headnum)
 {
+#if PERFECTHEAD
+	// The PerfectHead base heads (see phead.c)
+	return pheadGetTemplateHeadnum(headnum);
+#else
 	return g_MpBeauHeads[headnum].headnum;
+#endif
 }
 
 s32 mpGetNumBeauHeads(void)
@@ -3481,6 +3489,16 @@ void mpplayerfileLoadWad(s32 playernum, struct savebuffer *buffer, s32 arg2)
 		savebufferReadGuid(buffer, &guid);
 
 		if (g_PlayerConfigsArray[playernum].base.mpheadnum >= mpGetNumHeads2()) {
+#if PERFECTHEAD
+			// Find the head among the loaded heads or load it from its pak
+			s32 headnum = pheadFindHeadByGuid(&guid);
+
+			if (headnum >= 0) {
+				g_PlayerConfigsArray[playernum].base.mpheadnum = mpGetNumHeads2() + headnum;
+			} else {
+				g_PlayerConfigsArray[playernum].base.mpheadnum = MPHEAD_DARK_COMBAT;
+			}
+#else
 			if (guid.fileid != 0 && guid.deviceserial != 0) {
 				if (g_MenuData.unk668 < 11) {
 					g_MenuData.unk668++;
@@ -3492,6 +3510,7 @@ void mpplayerfileLoadWad(s32 playernum, struct savebuffer *buffer, s32 arg2)
 			} else {
 				g_PlayerConfigsArray[playernum].base.mpheadnum = MPHEAD_DARK_COMBAT;
 			}
+#endif
 		}
 	} else {
 		savebufferReadBits(buffer, 7);
@@ -4102,5 +4121,16 @@ void func0f18e558(void)
 
 struct modeldef *func0f18e57c(s32 index, s32 *headnum)
 {
+#if PERFECTHEAD
+	// Mission heads: one painted copy of each per stage, shared by the guards
+	// that use it (like the other guard heads). A head that isn't loaded any
+	// more gets its unpainted base head.
+	if (var800acc28[index] == NULL) {
+		var800acc28[index] = pheadLoadHeadModel(index, -1, headnum);
+	}
+
+	*headnum = pheadGetTemplateHeadnum(func0f14a9f8(index));
+#endif
+
 	return var800acc28[index];
 }

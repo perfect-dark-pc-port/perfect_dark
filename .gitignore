@@ -3,7 +3,9 @@
 *.dll
 *.exe
 pd.*.z64
+gbcam.sav
 build
+build-*
 .flatpak-builder
 extracted
 src/assets/*/*.bin
@@ -26,3 +28,14 @@ tools/mkrom/mkrom
 CppProperties.json
 .idea
 cmake-build-debug
+
+# PerfectHead: base head textures exported from your ROM (--phead-texdump), for tools/pheadmask
+pheadtex_*.bin
+tools/pheadmask/textures/
+
+# Local saves, settings and logs the game writes next to it
+pd.ini
+pd.crash.log
+eeprom.bin
+mpsetups.bin
+controllerpak*.mpk

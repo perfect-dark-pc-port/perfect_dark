@@ -1178,8 +1178,18 @@
 #define GAMEFILEFLAG_4D                   0x4d
 #define GAMEFILEFLAG_4E                   0x4e
 
-#define GBGAME_OTHER 0
-#define GBGAME_PD    2
+#define GBGAME_OTHER  0
+#define GBGAME_CAMERA 1 // PERFECTHEAD only; must fit in pak->unk2b8_05 (1 bit)
+#define GBGAME_PD     2
+
+// Licensee code of the Game Boy Camera / Pocket Camera cartridge ("01", Nintendo).
+// NTSC beta used this as ROM_COMPANYCODE; later versions changed it to Rare's.
+#define GBCAMERA_COMPANYCODE 0x3031
+
+// Cartridge type byte (header 0x147) of the camera's MAC-GBD mapper ("POCKET
+// CAMERA"). Only camera cartridges use it: all retail editions, prototypes and
+// carts flashed with homebrew camera software such as Photo! or 2bit PXLR Studio.
+#define GBCART_POCKETCAMERA 0xfc
 
 #define GEOFLAG_FLOOR1            0x0001
 #define GEOFLAG_FLOOR2            0x0002

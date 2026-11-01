@@ -34,6 +34,7 @@ endif()
 
 set(ROMID "ntsc-final" CACHE STRING "Which ROM to build an executable for: ntsc-final, pal-final or jpn-final")
 option(FORCE_CROSSCOMPILE "Force cross compiling" NO)
+option(PERFECTHEAD "Restore the cut PerfectHead feature (Game Boy Camera faces, see docs/perfecthead.md)" NO)
 
 # Determine target arch
 
@@ -146,6 +147,10 @@ add_definitions(
   -DPAL=${VERSION_IS_PAL}
   -DVERSION=${VERSION}
 )
+
+if(PERFECTHEAD)
+  add_definitions(-DPERFECTHEAD=1)
+endif()
 
 if(TARGET_IS_64BIT)
   add_definitions(-DPLATFORM_64BIT=1)

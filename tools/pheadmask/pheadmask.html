@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PerfectHead Hair Masks</title>
+<style>
+:root {
+  --bg: #f4f4f6; --panel: #ffffff; --text: #1d1d22; --muted: #6b6b76; --line: #d9d9e0;
+  --accent: #2f6fde; --hair: rgba(40, 110, 255, 0.55); --skin: rgba(255, 150, 40, 0.0);
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16161a; --panel: #212127; --text: #ececf1; --muted: #9a9aa6; --line: #34343c; --accent: #6f9cff; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+header { padding: 12px 16px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+header h1 { font-size: 16px; margin: 0 12px 0 0; }
+main { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
+#list { width: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; align-self: flex-start; }
+#list button { display: flex; justify-content: space-between; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
+#list button.sel { background: var(--accent); color: #fff; }
+#list button:disabled { color: var(--muted); cursor: default; }
+#list .tag { font-size: 12px; opacity: 0.8; }
+#work { flex: 1; min-width: 320px; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+.canvases { display: flex; flex-wrap: wrap; gap: 16px; }
+figure { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+figcaption { font-size: 12px; color: var(--muted); margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+canvas { image-rendering: pixelated; display: block; cursor: crosshair; touch-action: none; max-width: 100%; }
+button.b, label.b { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 5px 10px; font: inherit; cursor: pointer; }
+button.b.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.help { color: var(--muted); font-size: 13px; max-width: 760px; }
+textarea { width: 100%; height: 160px; font: 12px/1.3 ui-monospace, monospace; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+input[type=file] { display: none; }
+#status { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PerfectHead hair masks</h1>
+  <label class="b">Load textures (pheadtex_*.bin)<input id="files" type="file" multiple accept=".bin"></label>
+  <label class="b">Load masks (pheadmasks.c)<input id="cfile" type="file" accept=".c,.txt"></label>
+  <button class="b primary" id="export">Export pheadmasks.c</button>
+  <span id="status">Drop the files here, or use the buttons.</span>
+</header>
+<main>
+  <nav id="list"></nav>
+  <section id="work">
+    <div class="tools">
+      <span>Brush <input id="brush" type="range" min="1" max="6" value="2"> <span id="brushv">2</span></span>
+      <label><input id="mirror" type="checkbox" checked> Mirror the sides</label>
+      <label><input id="overlay" type="checkbox" checked> Show mask (H)</label>
+      <button class="b" id="auto">Start again from automatic</button>
+      <button class="b" id="useauto">Don't use a mask for this head</button>
+      <button class="b" id="undo">Undo (Ctrl+Z)</button>
+    </div>
+    <div class="canvases" id="canvases"></div>
+    <p class="help">
+      Left button paints <b>hair</b> (blue), right button paints <b>skin</b>. Hair takes the chosen
+      hair colour in the game, skin the skin tone; both keep their original shading.
+      On the face, the photo covers all the skin (unpainted texels) below the yellow hairrow line
+      and inside the dotted square's sides and bottom, so the hair you paint there is where the
+      photo stops. With "Mirror the sides" on, painting one side
+      also paints the other. Textures are shown upright; the export flips them back.
+      Save the export as <code>src/game/pheadmasks.c</code> and rebuild.
+    </p>
+    <details><summary>Exported C</summary><textarea id="out" readonly></textarea></details>
+  </section>
+</main>
+<script>
+"use strict";
+
+// g_PheadTemplates in src/game/phead.c: name, hairrow, hairlum, sidered, eyerow,
+// mouthrow, and for some heads: how they differ ("elvis" and "faceonly" heads
+// have no masks here; "nojpn" heads aren't in the JPN version)
+const TEMPLATES = [
+  ["HEAD_BEAU1", 47, 65, 55, 31, 12], ["HEAD_CHRIST", 49, 65, 80, 33, 14],
+  ["HEAD_DAVEC", 55, 50, 80, 35, 12], ["HEAD_NEIL2", 53, 50, 80, 37, 15],
+  ["HEAD_PRYCE", 53, 50, 80, 32, 13], ["HEAD_WONG", 55, 50, 80, 33, 13],
+  ["HEAD_TINTIN", 49, 50, 80, 32, 11], ["HEAD_PEER_S", 50, 50, 80, 31, 13],
+  ["HEAD_ALEX", 57, 50, 80, 34, 15], ["HEAD_JULIANNE", 52, 50, 80, 34, 10],
+  ["HEAD_LAURA", 55, 50, 80, 33, 12], ["HEAD_EILEEN_H", 54, 50, 80, 35, 12],
+  ["HEAD_SCOTT_H", 54, 50, 80, 37, 14],
+  ["HEAD_ELVIS", 64, 50, 80, 33, 13, "elvis"], ["HEAD_DDSNIPER", 51, 50, 80, 32, 12, "faceonly"],
+  ["HEAD_MOTO", 44, 50, 80, 30, 11, "nojpn"],
+];
+const NOMASK = { elvis: "(no hair)", faceonly: "(face only)" };
+const W = 32, H = 64, N = W * H, SCALE = 8;
+const NECKROWS = 6, MINSKIN = 80, FACEBOX_RX = 15; // as in phead.c
+const TEXNAMES = ["Face", "Side 1", "Side 2"];
+
+const tex = {};    // tex[t][i] = {rgb: Uint8ClampedArray(N*3)}
+const masks = {};  // masks[t] = [Uint8Array(N) x3]: painted by hand; absent = automatic
+const autoc = {};  // the automatic classifier's result, for showing and as a start
+let cur = -1;
+const undo = [];
+
+const $ = (id) => document.getElementById(id);
+function setStatus(s) { $("status").textContent = s; }
+
+function save() {
+  try {
+    const o = {};
+    for (const t in masks) o[t] = masks[t].map((m) => Array.from(m).join(""));
+    localStorage.setItem("pheadmasks", JSON.stringify(o));
+  } catch (e) {}
+}
+function restore() {
+  try {
+    const o = JSON.parse(localStorage.getItem("pheadmasks") || "{}");
+    for (const t in o) masks[t] = o[t].map((s) => Uint8Array.from(s, (c) => c === "1" ? 1 : 0));
+  } catch (e) {}
+}
+
+// pheadtex_TT_I.bin: "PHTX", template, index, width, height, numcolours (s32 LE),
+// 32x64 indices (row 0 = bottom), RGBA5551 big-endian palette
+function loadTex(buf) {
+  const dv = new DataView(buf);
+  if (buf.byteLength < 24 || dv.getUint32(0, true) !== 0x58544850) return false;
+  const t = dv.getInt32(4, true), i = dv.getInt32(8, true), ncol = dv.getInt32(20, true);
+  const px = new Uint8Array(buf, 24, N), pal = new Uint8Array(buf, 24 + N, ncol * 2);
+  const rgb = new Uint8ClampedArray(N * 3);
+  for (let k = 0; k < N; k++) {
+    const c = (pal[px[k] * 2] << 8) | pal[px[k] * 2 + 1];
+    rgb[k * 3] = ((c >> 11) & 31) << 3; rgb[k * 3 + 1] = ((c >> 6) & 31) << 3; rgb[k * 3 + 2] = ((c >> 1) & 31) << 3;
+  }
+  (tex[t] = tex[t] || [])[i] = { rgb };
+  return true;
+}
+
+// The automatic classifier, as pheadClassifyTexels
+function classify(t) {
+  const [, hairrow, hairlum, sidered] = TEMPLATES[t];
+  const face = tex[t][0].rgb;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let y = 18; y < 26; y++) for (let x = 5; x < 27; x++) {
+    if (x >= 10 && x < 22) continue;
+    const k = (y * W + x) * 3; r += face[k]; g += face[k + 1]; b += face[k + 2]; n++;
+  }
+  r = Math.floor(r / n); g = Math.floor(g / n); b = Math.floor(b / n);
+  const reflum = Math.floor((r * 3 + g * 6 + b) / 10);
+  const refcr = Math.floor(r * 256 / (r + g + b + 1)), refcg = Math.floor(g * 256 / (r + g + b + 1));
+  const refrg = Math.floor((r - g) * 256 / (reflum + 1));
+  const out = [];
+  for (let i = 0; i < 3; i++) {
+    const p = tex[t][i].rgb, m = new Uint8Array(N);
+    for (let k = 0; k < N; k++) {
+      const cr = p[k * 3], cg = p[k * 3 + 1], cb = p[k * 3 + 2];
+      const lum = Math.floor((cr * 3 + cg * 6 + cb) / 10), s = cr + cg + cb + 1;
+      const dist = Math.abs(Math.floor(cr * 256 / s) - refcr) + Math.abs(Math.floor(cg * 256 / s) - refcg);
+      const rg = Math.floor((cr - cg) * 256 / (lum + 1));
+      m[k] = (dist > 22 || lum * 100 < reflum * (i === 0 ? 50 : hairlum)
+        || rg * 100 < refrg * (i === 0 ? 55 : sidered) || (i === 0 && Math.floor(k / W) >= hairrow)) ? 1 : 0;
+    }
+    const f = new Uint8Array(N); // 5x5 majority
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      let c = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const yy = Math.min(H - 1, Math.max(0, y + dy)), xx = Math.min(W - 1, Math.max(0, x + dx));
+        c += m[yy * W + xx];
+      }
+      f[y * W + x] = c >= 13 ? 1 : 0;
+    }
+    if (i > 0) { // skin islands away from the neck are hair
+      const seen = new Uint8Array(N);
+      for (let k = 0; k < N; k++) {
+        if (f[k] || seen[k]) continue;
+        const q = [k]; seen[k] = 1; let neck = false;
+        for (let h = 0; h < q.length; h++) {
+          const j = q[h], jx = j % W, jy = Math.floor(j / W);
+          if (jy < NECKROWS) neck = true;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = jx + dx, ny = jy + dy, nn = ny * W + nx;
+            if (nx >= 0 && nx < W && ny >= 0 && ny < H && !f[nn] && !seen[nn]) { seen[nn] = 1; q.push(nn); }
+          }
+        }
+        if (!neck && q.length < MINSKIN) for (const j of q) f[j] = 1;
+      }
+    }
+    out.push(f);
+  }
+  // face: hair only where connected to the hairline
+  const f = out[0], mark = new Uint8Array(N), q = [];
+  for (let k = 0; k < N; k++) if (f[k] && Math.floor(k / W) >= hairrow) { mark[k] = 1; q.push(k); }
+  for (let h = 0; h < q.length; h++) {
+    const j = q[h], jx = j % W;
+    for (const nn of [jx > 0 ? j - 1 : -1, jx < W - 1 ? j + 1 : -1, j - W, j + W]) {
+      if (nn >= 0 && nn < N && f[nn] && !mark[nn]) { mark[nn] = 1; q.push(nn); }
+    }
+  }
+  out[0] = mark;
+  return out;
+}
+
+// What the head uses: its hand mask, or the automatic result
+function current() {
+  return masks[cur] || (autoc[cur] = autoc[cur] || classify(cur));
+}
+
+// Painting starts a hand mask from what is shown
+function editable() {
+  if (!masks[cur]) { masks[cur] = current().map((m) => m.slice()); buildList(); }
+  return masks[cur];
+}
+
+function buildList() {
+  const list = $("list");
+  list.innerHTML = "";
+  TEMPLATES.forEach(([name, , , , , , kind], t) => {
+    const b = document.createElement("button");
+    const have = tex[t] && tex[t][0] && tex[t][1] && tex[t][2];
+    b.disabled = !have || kind in NOMASK;
+    b.className = t === cur ? "sel" : "";
+    b.innerHTML = `<span>${t} ${name.replace("HEAD_", "")}</span><span class="tag">${kind in NOMASK ? "no mask" : !have ? "no textures" : masks[t] ? "mask" : "automatic"}</span>`;
+    b.onclick = () => select(t);
+    list.appendChild(b);
+  });
+}
+
+function select(t) {
+  cur = t;
+  undo.length = 0;
+  buildList();
+  const box = $("canvases");
+  box.innerHTML = "";
+  for (let i = 0; i < 3; i++) {
+    const fig = document.createElement("figure");
+    fig.innerHTML = `<figcaption><span>${TEXNAMES[i]}</span><span>${i === 0 ? "row 0 = chin" : ""}</span></figcaption>`;
+    const c = document.createElement("canvas");
+    c.width = W * SCALE; c.height = H * SCALE;
+    c.dataset.i = i;
+    c.addEventListener("contextmenu", (e) => e.preventDefault());
+    c.addEventListener("pointerdown", (e) => { c.setPointerCapture(e.pointerId); pushUndo(); paint(e, c); });
+    c.addEventListener("pointermove", (e) => { if (e.buttons) paint(e, c); });
+    fig.appendChild(c);
+    box.appendChild(fig);
+  }
+  draw();
+}
+
+function pushUndo() {
+  undo.push(masks[cur] ? masks[cur].map((m) => m.slice()) : null);
+  if (undo.length > 50) undo.shift();
+}
+
+function paint(e, c) {
+  const i = +c.dataset.i, rect = c.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / rect.width * W);
+  const y = H - 1 - Math.floor((e.clientY - rect.top) / rect.height * H);
+  const val = (e.buttons & 2) ? 0 : 1;
+  const r = +$("brush").value - 1, m = editable();
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (dx * dx + dy * dy > r * r + r) continue;
+    const xx = x + dx, yy = y + dy;
+    if (xx < 0 || xx >= W || yy < 0 || yy >= H) continue;
+    m[i][yy * W + xx] = val;
+    if (i > 0 && $("mirror").checked) m[3 - i][yy * W + (W - 1 - xx)] = val;
+  }
+  draw();
+  save();
+}
+
+function draw() {
+  if (cur < 0) return;
+  const m = current(), show = $("overlay").checked;
+  const [, hairrow, , , eyerow, mouthrow] = TEMPLATES[cur];
+  document.querySelectorAll("#canvases canvas").forEach((c) => {
+    const i = +c.dataset.i, ctx = c.getContext("2d"), p = tex[cur][i].rgb;
+    const img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x, o = ((H - 1 - y) * W + x) * 4;
+      let r = p[k * 3], g = p[k * 3 + 1], b = p[k * 3 + 2];
+      if (show && m[i][k]) { r = r * 0.45 + 40 * 0.55; g = g * 0.45 + 110 * 0.55; b = b * 0.45 + 255 * 0.55; }
+      img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
+    }
+    const tmp = document.createElement("canvas");
+    tmp.width = W; tmp.height = H;
+    tmp.getContext("2d").putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, 0, 0, W * SCALE, H * SCALE);
+    if (i === 0) { // hairline and the photo square (as in phead.c)
+      const span = eyerow - mouthrow, top = eyerow + span * 13 / 10, bottom = mouthrow - span * 3 / 5;
+      const cy = (top + bottom) / 2, ry = (top - bottom) / 2;
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 1;
+      ctx.strokeRect((W / 2 - FACEBOX_RX) * SCALE, (H - cy - ry) * SCALE, FACEBOX_RX * 2 * SCALE, ry * 2 * SCALE);
+      ctx.strokeStyle = "rgba(255,220,0,0.9)";
+      ctx.beginPath(); ctx.moveTo(0, (H - hairrow) * SCALE); ctx.lineTo(W * SCALE, (H - hairrow) * SCALE); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+  exportC();
+}
+
+function exportC() {
+  let arrays = "", rows = "";
+  TEMPLATES.forEach(([name, , , , , , kind], t) => {
+    const refs = [];
+    let arr = "";
+    for (let i = 0; i < 3; i++) {
+      if (!masks[t] || kind in NOMASK) { refs.push("NULL"); continue; }
+      const id = `g_PheadMask_${String(t).padStart(2, "0")}_${i}`;
+      const words = [];
+      for (let y = 0; y < H; y++) {
+        let v = 0;
+        for (let x = 0; x < W; x++) if (masks[t][i][y * W + x]) v |= (1 << x);
+        words.push("0x" + (v >>> 0).toString(16).padStart(8, "0"));
+      }
+      let body = "";
+      for (let k = 0; k < H; k += 8) body += "\t" + words.slice(k, k + 8).join(", ") + ",\n";
+      arr += `// ${name}: ${TEXNAMES[i].toLowerCase()}\nstatic const u32 ${id}[64] = {\n${body}};\n\n`;
+      refs.push(id);
+    }
+    let row = `\t${`{ ${refs.join(", ")} },`.padEnd(57)} // ${t} ${name}${kind in NOMASK ? " " + NOMASK[kind] : ""}\n`;
+    if (kind === "nojpn") {
+      if (arr) arr = `#if VERSION != VERSION_JPN_FINAL\n${arr}#endif\n\n`;
+      row = `#if VERSION != VERSION_JPN_FINAL\n${row}#endif\n`;
+    }
+    arrays += arr;
+    rows += row;
+  });
+  $("out").value = `#include <ultra64.h>
+#include "versions.h"
+
+#if PERFECTHEAD
+#include "game/phead.h"
+
+/**
+ * Hand-painted hair masks for the PerfectHead base heads.
+ *
+ * Made with tools/pheadmask/pheadmask.html, which writes this file. For each
+ * base head (g_PheadTemplates order): the face texture and the two side
+ * textures. NULL = the automatic skin/hair classifier is used for that
+ * texture. Each mask has 64 rows (row 0 = the bottom of the texture); bit x
+ * of a row is set where texel x is hair.
+ */
+
+${arrays}const u32 *const g_PheadHairMasks[PHEAD_NUM_TEMPLATES][3] = {
+${rows}};
+
+#endif
+`;
+}
+
+function loadC(text) {
+  let count = 0;
+  const re = /g_PheadMask_(\d+)_(\d)\[64\]\s*=\s*\{([^}]*)\}/g;
+  let mt;
+  while ((mt = re.exec(text))) {
+    const t = +mt[1], i = +mt[2];
+    const words = mt[3].match(/0x[0-9a-fA-F]+/g) || [];
+    if (words.length !== 64 || t >= TEMPLATES.length) continue;
+    if (!masks[t]) masks[t] = [new Uint8Array(N), new Uint8Array(N), new Uint8Array(N)];
+    words.forEach((w, y) => { const v = parseInt(w, 16); for (let x = 0; x < W; x++) masks[t][i][y * W + x] = (v >>> x) & 1; });
+    count++;
+  }
+  setStatus(`Loaded ${count} masks.`);
+  save(); buildList(); draw();
+}
+
+async function loadFiles(files) {
+  let n = 0;
+  for (const f of files) {
+    if (/\.c$|\.txt$/i.test(f.name)) { loadC(await f.text()); continue; }
+    if (loadTex(await f.arrayBuffer())) n++;
+  }
+  setStatus(`Loaded ${n} textures.`);
+  buildList();
+  if (cur < 0) { const t = TEMPLATES.findIndex((_, k) => tex[k] && tex[k][0] && tex[k][1] && tex[k][2]); if (t >= 0) select(t); }
+  else draw();
+}
+
+$("files").onchange = (e) => loadFiles(e.target.files);
+$("cfile").onchange = (e) => loadFiles(e.target.files);
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => { e.preventDefault(); loadFiles(e.dataTransfer.files); });
+$("brush").oninput = () => { $("brushv").textContent = $("brush").value; };
+$("overlay").onchange = draw;
+$("auto").onclick = () => { if (cur < 0) return; pushUndo(); masks[cur] = classify(cur); save(); buildList(); draw(); };
+// (keeps a mask equal to the automatic result, to edit from)
+$("useauto").onclick = () => { if (cur < 0) return; pushUndo(); delete masks[cur]; save(); buildList(); draw(); };
+$("undo").onclick = () => {
+  if (!undo.length || cur < 0) return;
+  const prev = undo.pop();
+  if (prev) masks[cur] = prev; else delete masks[cur];
+  save(); buildList(); draw();
+};
+document.addEventListener("keydown", (e) => {
+  if (e.key === "h" || e.key === "H") { $("overlay").checked = !$("overlay").checked; draw(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); $("undo").click(); }
+});
+$("export").onclick = () => {
+  exportC();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([$("out").value], { type: "text/plain" }));
+  a.download = "pheadmasks.c";
+  a.click();
+};
+
+restore();
+buildList();
+exportC();
+</script>
+</body>
+</html>

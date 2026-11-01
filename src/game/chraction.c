@@ -15166,6 +15166,14 @@ struct prop *chrSpawnAtCoord(s32 bodynum, s32 headnum, struct coord *pos, RoomNu
 
 					chr = prop->chr;
 					chr->headnum = headnum;
+#if PERFECTHEAD
+					if (headnum < 0) {
+						// A mission PerfectHead: the chr uses its base head
+						s32 basehead;
+						func0f18e57c(-1 - headnum, &basehead);
+						chr->headnum = basehead;
+					}
+#endif
 					chr->bodynum = bodynum;
 					chr->race = bodyGetRace(chr->bodynum);
 					chr->flags = 0;

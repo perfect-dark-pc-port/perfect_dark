@@ -117,10 +117,14 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 2. Open the `MINGW64` prompt if building for x86_64, or the `MINGW32` prompt if building for i686. (**NOTE:** _do not_ use the `MSYS` prompt)
 3. Install dependencies:  
    `pacman -S mingw-w64-x86_64-toolchain mingw-w64-x86_64-SDL2 mingw-w64-x86_64-zlib mingw-w64-x86_64-cmake mingw-w64-x86_64-python3 mingw-w64-i686-toolchain mingw-w64-i686-SDL2 mingw-w64-i686-zlib mingw-w64-i686-cmake mingw-w64-i686-python3 make git`
+   * Optional, for PerfectHead builds (`-DPERFECTHEAD=ON`, see the configure step below): to use your webcam as the Game Boy Camera, also install SDL3:  
+     `pacman -S mingw-w64-x86_64-sdl3`  
+     It is only needed to run the game, not to build it; without it the camera shows a test card. When running the game outside the MINGW64 prompt, copy `SDL3.dll` from `C:\msys64\mingw64\bin` next to the executable. See [docs/perfecthead.md](docs/perfecthead.md).
 4. Get the source code:  
    `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
 5. Run `cmake -G"Unix Makefiles" -Bbuild .`.
-   * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.\
+   * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.
+   * Add ` -DPERFECTHEAD=ON` at the end of the command to build with PerfectHead (the restored Game Boy Camera faces, see [docs/perfecthead.md](docs/perfecthead.md)). The build folder remembers it; add ` -DPERFECTHEAD=OFF` to turn it off again.
 6. Run `cmake --build build -j4 -- -O`.
 7. The resulting executable will be at `build/pd.x86_64.exe` (or at `build/pd.i686.exe` if building for i686).
 8. If you don't know where you downloaded the source to, you can run `explorer .` to open the current directory.
@@ -129,12 +133,20 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
 
 1. Ensure you have gcc, g++ (version 10.0+), make, cmake, git, python3 and SDL2 (version 2.0.12+), libGL and ZLib installed on your system.
    * If you wish to crosscompile, you will also need to have libraries and compilers for the target platform installed, e.g. `gcc-multilib` and `g++-multilib` for x86_64 -> i686 crosscompilation.
+   * Optional, for PerfectHead builds (`-DPERFECTHEAD=ON`, see the configure step below): to use your webcam as the Game Boy Camera, also install SDL3 (version 3.2+):
+     * Debian 13+ / Ubuntu 25.04+: `sudo apt install libsdl3-0`
+     * Fedora: `sudo dnf install SDL3`
+     * Arch: `sudo pacman -S sdl3`
+     * Older distributions don't package SDL 3.2: build it from [source](https://github.com/libsdl-org/SDL/releases) and install it (`cmake -Bbuild && cmake --build build && sudo cmake --install build`).
+
+     It is only needed to run the game, not to build it; without it the camera shows a test card. The game finds `libSDL3.so.0` by name; if yours is somewhere the system doesn't search, set `SDL3Library` under `[PerfectHead]` in `pd.ini` to its full path. Your user needs access to the webcam (`/dev/video*`, usually the `video` group). See [docs/perfecthead.md](docs/perfecthead.md).
 2. Get the source code:  
    `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
 3. Run the following command:
    * ```cmake -G"Unix Makefiles" -Bbuild .```
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.
    * Add ` -DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32` at the end of the command if you want to crosscompile from x86_64 to x86.
+   * Add ` -DPERFECTHEAD=ON` at the end of the command to build with PerfectHead (the restored Game Boy Camera faces, see [docs/perfecthead.md](docs/perfecthead.md)). The build folder remembers it; add ` -DPERFECTHEAD=OFF` to turn it off again.
 4. Run `cmake --build build -j4`.
 5. The resulting executable will be at `build/pd.<arch>` (for example `build/pd.x86_64`).
 
@@ -153,12 +165,18 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
      ```
    * This installs SDL2 system-wide and this is how the automatic builds are done. The game will also look for it in the executable path, so you could
      download it locally instead.
-4. Get the source code:  
+   * Optional, for PerfectHead builds (`-DPERFECTHEAD=ON`, see the configure step below): to use your webcam as the Game Boy Camera, also install SDL3 (version 3.2+):
+     `brew install sdl3`
+     It is only needed to run the game, not to build it; without it the camera shows a test card. On an Intel Mac the game finds it on its own (in `/usr/local/lib`). On an Apple Silicon Mac Homebrew puts it in `/opt/homebrew/lib`, which isn't searched, so set `SDL3Library` under `[PerfectHead]` in `pd.ini`:
+     `SDL3Library=/opt/homebrew/lib/libSDL3.0.dylib`
+     The first time the camera is used, macOS asks for permission to use it (for the terminal the game was started from, if any). See [docs/perfecthead.md](docs/perfecthead.md).
+4. Get the source code:
    `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
 5. Configure:
    * Execute command: `cmake -G"Unix Makefiles" -Bbuild -DCMAKE_OSX_ARCHITECTURES=x86_64 .`
    * Replace `x86_64` with `arm64` if building for an ARM64 Mac.
    * Add ` -DROMID=pal-final` or ` -DROMID=jpn-final` at the end of the command if you want to build a PAL or JPN executable respectively.
+   * Add ` -DPERFECTHEAD=ON` at the end of the command to build with PerfectHead (the restored Game Boy Camera faces, see [docs/perfecthead.md](docs/perfecthead.md)). The build folder remembers it; add ` -DPERFECTHEAD=OFF` to turn it off again.
 6. Build:
    * Execute command: `cmake --build build --target pd -j4 --clean-first`
 7. The resulting executable will be at `build/pd.<arch>` (for example `build/pd.x86_64`).
@@ -179,7 +197,7 @@ Controls can be rebound in `pd.ini`. Default control scheme is as follows:
      dkp-pacman -S devkitA64 libnx switch-zlib switch-sdl2 switch-cmake dkp-toolchain-vars
      ```
    * If in MSYS2 or `dkp-pacman` doesn't work, replace it with just `pacman`.
-4. Get the source code:  
+4. Get the source code:
    `git clone --recursive https://github.com/fgsfdsfgs/perfect_dark.git && cd perfect_dark`
 5. Ensure devkitA64 environment variables are set:
    * Execute command: `source /opt/devkitpro/switchvars.sh`

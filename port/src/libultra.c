@@ -12,6 +12,8 @@
 #include "video.h"
 #include "audio.h"
 #include "fs.h"
+#include "gbcam.h"
+#include "mempak.h"
 
 #define EEPROM_SIZE (EEP16K_MAXBLOCKS * 8)
 #define EEPROM_FNAME "eeprom.bin"
@@ -232,6 +234,11 @@ void osContGetQuery(OSContStatus *status)
 
 s32 osMotorProbe(OSMesgQueue *ctrlrqueue, OSPfs* pfs, s32 channel)
 {
+	if (channel == gbcamGetChannel() || mempakIsPlugged(channel)) {
+		// a Transfer Pak or Controller Pak answers the rumble probe with a device error
+		return PFS_ERR_DEVICE;
+	}
+
 	if (pfs && inputRumbleSupported(channel)) {
 		pfs->queue = ctrlrqueue;
 		pfs->channel = channel;
@@ -336,7 +343,7 @@ s32 osPfsIsPlug(OSMesgQueue *queue, u8 *pattern)
 	if (pattern) {
 		*pattern = 0;
 		for (s32 i = 0; i < MAXCONTROLLERS; ++i) {
-			if (inputRumbleSupported(i)) {
+			if (inputRumbleSupported(i) || mempakIsPlugged(i) || (i == gbcamGetChannel() && inputControllerConnected(i))) {
 				*pattern |= 1 << i;
 			}
 		}
@@ -346,75 +353,111 @@ s32 osPfsIsPlug(OSMesgQueue *queue, u8 *pattern)
 
 s32 osPfsInitPak(OSMesgQueue *queue, OSPfs *pfs, s32 channel, s32 *arg3)
 {
-	// if rumble is supported, indicate that we have a rumble pak instead
+	// if rumble is supported or the virtual Game Boy Camera is plugged in here,
+	// indicate that we have a different kind of pak instead
+	if (channel == gbcamGetChannel()) {
+		return PFS_ERR_DEVICE;
+	}
+	if (mempakIsPlugged(channel)) {
+		return mempakInit(queue, pfs, channel);
+	}
 	return inputRumbleSupported(channel) ? PFS_ERR_DEVICE : PFS_ERR_NOPACK;
 }
 
+/* Controller Pak file system: only the virtual Controller Pak is emulated, see mempak.c */
+
+#define PFS_IS_MEMPAK(pfs) ((pfs) && mempakIsPlugged((pfs)->channel))
+
 s32 osPfsChecker(OSPfs *pfs)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakChecker(pfs) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsFreeBlocks(OSPfs *pfs, s32 *remaining)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakFreeBlocks(pfs, remaining) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsNumFiles(OSPfs *pfs, s32 *max_files, s32 *files_used)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakNumFiles(pfs, max_files, files_used) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsAllocateFile(OSPfs *pfs, u16 company_code, u32 game_code, u8 *game_name, u8 *ext_name, int num_bytes, s32 *file_no)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakAllocateFile(pfs, company_code, game_code, game_name, ext_name, num_bytes, file_no) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsFindFile(OSPfs *pfs, u16 company_code, u32 game_code, u8 *game_name, u8 *ext_name, s32 *file_no)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakFindFile(pfs, company_code, game_code, game_name, ext_name, file_no) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsDeleteFile(OSPfs *pfs, u16 company_code, u32 game_code, u8 *game_name, u8 *ext_name)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakDeleteFile(pfs, company_code, game_code, game_name, ext_name) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsReSizeFile(OSPfs *pfs, u16 company_code, u32 game_code, u8 *game_name, u8 *ext_name, int length)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakReSizeFile(pfs, company_code, game_code, game_name, ext_name, length) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsFileState(OSPfs *pfs, s32 fileNo, OSPfsState *state)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakFileState(pfs, fileNo, state) : PFS_ERR_NOPACK;
 }
 
 s32 osPfsReadWriteFile(OSPfs* pfs, s32 fileNo, u8 flag, int offset, int size, u8* data)
 {
-	return PFS_ERR_NOPACK;
+	return PFS_IS_MEMPAK(pfs) ? mempakReadWriteFile(pfs, fileNo, flag, offset, size, data) : PFS_ERR_NOPACK;
 }
 
-/* Gbpak */
+/* Gbpak: only the virtual Game Boy Camera (PerfectHead) is emulated, see gbcam.c */
+
+static inline s32 osGbpakIsCamera(OSPfs *pfs)
+{
+	return pfs && pfs->channel >= 0 && pfs->channel == gbcamGetChannel();
+}
 
 s32 osGbpakInit(OSMesgQueue *queue, OSPfs *pfs, s32 ch)
 {
+	if (pfs && ch >= 0 && ch == gbcamGetChannel()) {
+		sysLogPrintf(LOG_NOTE, "gbpak: Transfer Pak with virtual Game Boy Camera on controller %d", ch + 1);
+		pfs->queue = queue;
+		pfs->channel = ch;
+		pfs->status = 0;
+		pfs->activebank = 0xff;
+		return 0;
+	}
 	return PFS_ERR_NOPACK;
 }
 
 s32 osGbpakPower(OSPfs *pfs, s32 flag)
 {
-	return PFS_ERR_NOPACK;
+	return osGbpakIsCamera(pfs) ? 0 : PFS_ERR_NOPACK;
 }
 
 s32 osGbpakReadWrite(OSPfs *pfs, u16 flag, u16 addr, u8 *buf, u16 size)
 {
-	return PFS_ERR_NOPACK;
+	if (!osGbpakIsCamera(pfs)) {
+		return PFS_ERR_NOPACK;
+	}
+	return (flag == PFS_WRITE) ? gbcamWrite(addr, buf, size) : gbcamRead(addr, buf, size);
 }
 
 s32 osGbpakReadId(OSPfs *pfs, OSGbpakId *id, u8 *status)
 {
-	return PFS_ERR_NOPACK;
+	if (!osGbpakIsCamera(pfs)) {
+		return PFS_ERR_NOPACK;
+	}
+	if (id) {
+		gbcamGetId(id);
+	}
+	if (status) {
+		*status = OS_GBPAK_GBCART_ON | OS_GBPAK_POWER;
+	}
+	return 0;
 }
 
 /* Misc */

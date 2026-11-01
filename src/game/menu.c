@@ -2,6 +2,7 @@
 #include "constants.h"
 #include "../lib/naudio/n_sndp.h"
 #include "game/camdraw.h"
+#include "game/phead.h"
 #include "game/game_006900.h"
 #include "game/body.h"
 #include "game/objectives.h"
@@ -1895,17 +1896,32 @@ Gfx *menuRenderModel(Gfx *gdl, struct menumodel *menumodel, s32 modeltype)
 					if (MENUMODELPARAMS_HAS_MASTER_HEADBODY(menumodel->newparams)) {
 						headnum = MENUMODELPARAMS_GET_MASTER_HEADNUM(menumodel->newparams);
 						bodynum = MENUMODELPARAMS_GET_MASTER_BODYNUM(menumodel->newparams);
+#if PERFECTHEAD
+						menumodel->isperfecthead = false;
+#endif
 					} else {
 						s32 mpheadnum = MENUMODELPARAMS_GET_MP_HEADNUM(menumodel->newparams);
 						s32 mpbodynum = MENUMODELPARAMS_GET_MP_BODYNUM(menumodel->newparams);
 						bodynum = mpGetBodyId(mpbodynum);
 
+#if PERFECTHEAD
+						if (mpheadnum >= mpGetNumHeads2() && pheadGetMpHead(mpheadnum) < 0) {
+							mpheadnum = MPHEAD_DARK_COMBAT;
+						}
+#endif
+
 						if (mpheadnum < mpGetNumHeads2()) {
 							headnum = mpGetHeadId(mpheadnum);
+#if PERFECTHEAD
+							menumodel->isperfecthead = false;
+#endif
 						} else {
 							headnum = func0f14a9f8(mpheadnum - mpGetNumHeads2());
 							headnum = mpGetBeauHeadId(headnum);
 							menumodel->perfectheadnum = (mpheadnum - mpGetNumHeads2()) & 0xff;
+#if PERFECTHEAD
+							menumodel->isperfecthead = true;
+#endif
 						}
 					}
 
@@ -1947,6 +1963,12 @@ Gfx *menuRenderModel(Gfx *gdl, struct menumodel *menumodel, s32 modeltype)
 						fileGetLoadedSize(headfilenum);
 						bodyCalculateHeadOffset(menumodel->headmodeldef, headnum, bodynum);
 						modelAllocateRwData(menumodel->headmodeldef);
+
+#if PERFECTHEAD
+						if (menumodel->isperfecthead) {
+							pheadPaintHead(menumodel->headmodeldef, pheadGetPaintSlot(menumodel->perfectheadnum), true, menumodel->allocstart + menumodel->alloclen);
+						}
+#endif
 					}
 
 					modelInit(&menumodel->bodymodel, menumodel->bodymodeldef, menumodel->rwdata, true);
@@ -1985,6 +2007,11 @@ Gfx *menuRenderModel(Gfx *gdl, struct menumodel *menumodel, s32 modeltype)
 					menumodel->bodymodel.rwdatalen = 256;
 #endif
 					menumodel->bodymodel.anim = &menumodel->bodyanim;
+
+#if PERFECTHEAD
+					// The PerfectHead Editor shows the head on its own
+					menumodel->isperfecthead = pheadMenuModelLoaded(menumodel);
+#endif
 				}
 
 				menumodel->curparams = menumodel->newparams;

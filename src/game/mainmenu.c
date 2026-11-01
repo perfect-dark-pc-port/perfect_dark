@@ -15,6 +15,7 @@
 #include "game/lv.h"
 #include "game/mainmenu.h"
 #include "game/menu.h"
+#include "game/phead.h"
 #include "game/mplayer/ingame.h"
 #include "game/mplayer/mplayer.h"
 #include "game/objectives.h"
@@ -4871,6 +4872,13 @@ MenuDialogHandlerResult menudialogMainMenu(s32 operation, struct menudialogdef *
 				g_Menus[g_MpPlayerNum].curdialog->definition == dialogdef) {
 			g_MissionConfig.iscoop = false;
 			g_MissionConfig.isanti = false;
+
+#if PERFECTHEAD && !defined(PLATFORM_N64)
+			if (g_PheadMenuAutoOpen) {
+				g_PheadMenuAutoOpen = 0;
+				menuPushDialog(&g_PheadRootMenuDialog);
+			}
+#endif
 		}
 		break;
 	}
