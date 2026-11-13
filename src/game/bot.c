@@ -42,6 +42,10 @@ struct chrdata *g_MpBotChrPtrs[MAX_BOTS];
 
 u8 g_BotCount = 0;
 
+#ifndef PLATFORM_N64
+s32 g_FixBotPlayer2Bias = true;
+#endif
+
 struct botdifficulty g_BotDifficulties[] = {
 	//           shootdelay
 	//           |            unk04
@@ -262,6 +266,10 @@ void botSpawn(struct chrdata *chr, u8 respawning)
 		func0f02e9a0(chr, 0);
 
 #ifndef PLATFORM_N64
+		if (g_FixBotPlayer2Bias) {
+			aibot->queryplayernum = -1; // we'll take this to mean freshly spawned
+		}
+
 		if (g_Vars.normmplayerisrunning
 				&& (g_MpSetup.options & MPOPTION_SPAWNWITHWEAPON)
 				&& g_MpSetup.weapons[0] != MPWEAPON_NONE
@@ -1548,6 +1556,37 @@ void botChooseGeneralTarget(struct chrdata *botchr)
 	RoomNum room = -1;
 	struct chrdata *trychr;
 	s32 playernum;
+
+ /* Original bug: Spawning bots default to targeting Player2
+  *
+  * Explanation: Bots are meant to use distance and line of sight to
+  * choose the nearest player as their general target.
+  * However, they only update distance/LoS/rooms to one other player each
+  * frame (starting with player2 at index 1 because queryplayernum is
+  * incremented BEFORE the first dist/LoS calculation), and they have to
+  * choose their first target on the first frame after spawning.
+  * Thus, player2 is the only player who can possibly have less than
+  * U32_MAX as their chrdistances value (and chrsinsight == true) when
+  * the first target is chosen.
+	*
+  * Quick fix: Pre-calculate distance/LoS/rooms for all other players before
+  * choosing a target on the first call to botChooseGeneralTarget after
+  * spawning.
+  * This allows a fresh-spawned bot to actually determine the nearest player
+  * and choose their first target accordingly, as intended.
+	*/
+#ifndef PLATFORM_N64
+	if (g_FixBotPlayer2Bias && aibot->queryplayernum < 0) { // queryplayernum -1 means freshly spawned bot
+		for (i = 1; i < g_MpNumChrs; i++) { // pre-calculate dist, insight, and rooms to players 2+ (vanilla tick behavior will calc p1 first frame)
+			trychr = mpGetChrFromPlayerIndex(i);
+			if (trychr != botchr) {
+				aibot->chrdistances[i] = chrGetDistanceToCoord(botchr, &trychr->prop->pos);
+				aibot->chrsinsight[i] = chrHasLosToChr(botchr, trychr, &room);
+				aibot->chrrooms[i] = room;
+			}
+		}
+	}
+#endif
 
 	// Advance the bot's internal pointer to the next chr
 	// and update stats about that chr

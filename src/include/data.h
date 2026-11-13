@@ -558,6 +558,7 @@ extern s32 g_TickExtraSleep;
 extern s32 g_MusicDisableMpDeath;
 extern s32 g_BgunGeMuzzleFlashes;
 extern s32 g_FileAutoSelect;
+extern s32 g_FixBotPlayer2Bias;
 
 extern u8 g_MpWeaponSetRandomFilters[NUM_MPWEAPONS];
 extern s32 g_MpWeaponRandomFilterNum;
